@@ -19,7 +19,7 @@ async function exists(relative) {
 test('package.json: bundle-патч, клиент, версия 0.5.3 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.5.4')
+  assert.equal(manifest.version, '0.5.5')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')

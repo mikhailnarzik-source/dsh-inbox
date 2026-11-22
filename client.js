@@ -405,7 +405,7 @@ window.__ModuleLoader__.load({
      * from the `--dsw-alias-*` tokens, geometry is plain CSS.
      */
     const CSS = `
-.dsh-inbox{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;width:100%;max-width:960px;margin:0 auto;padding:24px 28px 40px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
+.dsh-inbox{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;width:100%;max-width:960px;margin:0 auto;padding:24px 28px 40px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;flex:1 1 auto;min-width:0;min-height:0;max-height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;padding-bottom:40px}
 .dsh-inbox-header{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .dsh-inbox-icon{flex:none;display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;font-size:26px;line-height:1;background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-brand-primary) 92%,transparent),color-mix(in srgb,var(--dsw-alias-brand-primary) 62%,transparent));box-shadow:0 6px 16px color-mix(in srgb,var(--dsw-alias-brand-primary) 22%,transparent)}
 .dsh-inbox-heading{display:flex;flex-direction:column;gap:2px;flex:1 1 240px;min-width:0}
@@ -1034,6 +1034,12 @@ window.__ModuleLoader__.load({
               display: 'flex',
               flexDirection: 'column',
               gap: 16,
+              flex: '1 1 auto',
+              minHeight: 0,
+              maxHeight: '100%',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              overscrollBehavior: 'contain',
             },
           },
           h('style', null, CSS),
