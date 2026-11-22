@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Browser half of `dsh-inbox` — «Входящие».
  *
  * Contributes the plugin settings page: the token field (write-only, the
@@ -424,11 +424,11 @@ window.__ModuleLoader__.load({
 .dsh-inbox-note{margin:0;font-size:12px;line-height:17px;color:var(--dsw-alias-state-success-primary)}
 .dsh-inbox-note.is-bad{color:var(--dsw-alias-state-error-primary)}
 .dsh-inbox-error{margin:0;font-size:12px;line-height:17px;color:var(--dsw-alias-state-error-primary)}
-.dsh-inbox-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:17px;white-space:nowrap}
-.dsh-inbox-pill::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
-.dsh-inbox-pill.is-ok{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);color:var(--dsw-alias-state-success-primary)}
-.dsh-inbox-pill.is-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,transparent);color:var(--dsw-alias-state-warn-primary)}
-.dsh-inbox-pill.is-bad{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);color:var(--dsw-alias-state-error-primary)}
+.dsh-inbox-pill,.dsh-inbox-badge{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12.5px;font-weight:600;line-height:1;white-space:nowrap;flex:0 0 auto;min-width:0;max-width:100%}
+.dsh-inbox-pill::before,.dsh-inbox-badge::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.dsh-inbox-pill.is-ok,.dsh-inbox-badge.is-on{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 16%,transparent);color:var(--dsw-alias-state-success-primary)}
+.dsh-inbox-pill.is-warn,.dsh-inbox-badge.is-off{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 16%,transparent);color:var(--dsw-alias-state-warn-primary)}
+.dsh-inbox-pill.is-bad{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 16%,transparent);color:var(--dsw-alias-state-error-primary)}
 .dsh-inbox-input{flex:1 1 260px;min-width:0;max-width:100%;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px}
 .dsh-inbox-input::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dsh-inbox-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
@@ -468,16 +468,13 @@ window.__ModuleLoader__.load({
 .dsh-inbox-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:28px 16px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12.5px;line-height:17px}
 .dsh-inbox-empty-icon{font-size:32px;line-height:1}
 .dsh-inbox-summary{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
-.dsh-inbox-badge{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:12px;line-height:17px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-inbox-badge.is-on{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent)}
-.dsh-inbox-badge.is-off{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent)}
 .dsh-inbox-textarea{flex:0 0 auto;width:100%;box-sizing:border-box;min-height:56px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:18px;resize:vertical}
 .dsh-inbox-textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsh-inbox-textarea:disabled{opacity:.6}
-.dsh-inbox-chips{display:flex;flex-wrap:wrap;gap:6px}
-.dsh-inbox-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-base);font-size:12px;line-height:17px}
+.dsh-inbox-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.dsh-inbox-chip{box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:2px 6px 2px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);font-size:12.5px;font-weight:600;line-height:1;max-width:100%}
 .dsh-inbox-chip:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
-.dsh-inbox-chip.is-blocked{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
+.dsh-inbox-chip.is-blocked{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);color:var(--dsw-alias-state-warn-primary)}
 .dsh-inbox-chip-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-inbox-chip .dsh-inbox-button{height:28px;padding:0 10px;font-size:11.5px;border-radius:8px}
 .dsh-inbox-command{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}

@@ -295,6 +295,13 @@ test('client.js: страница оформлена по единому сти�
   const pills = all.filter(node => typeof node.props?.className === 'string' && node.props.className.startsWith('dsh-inbox-pill'))
   assert.ok(pills.length >= 2, 'чипы статуса в шапке')
   assert.match(css, /\.dsh-inbox-pill::before/)
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*height:32px/, 'чип — кнопка: height 32')
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*border-radius:10px/, 'чип — не пилюля: radius 10')
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*padding:0 12px/, 'padding чипа 0 12')
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*border:1px solid/, 'у чипа рамка 1px')
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*font-size:12\.5px/, 'шрифт чипа 12.5')
+  assert.match(css, /\.dsh-inbox-pill,\.dsh-inbox-badge\{[^}]*font-weight:600/, 'шрифт чипа 600')
+  assert.match(css, /\.dsh-inbox-pill::before,\.dsh-inbox-badge::before\{[^}]*width:6px[^}]*height:6px/, 'точка-индикатор 6px')
 
   const refreshButton = all.find(node => typeof node.props?.className === 'string'
     && node.props.className.includes('dsh-inbox-button')
