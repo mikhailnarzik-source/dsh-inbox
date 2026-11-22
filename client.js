@@ -684,12 +684,17 @@ window.__ModuleLoader__.load({
           try {
             const payload = await call(QUEUE_LISTENER_PATH, { enabled });
             if (!mounted.current) return;
-            setNotice({
-              kind: payload?.ok === true ? 'ok' : 'bad',
-              text: payload?.ok === true
-                ? (payload.message ?? (enabled ? t('queueListenerDone') : t('queueListenerOffDone')))
-                : (payload?.message ?? t('queueListenerFailed')),
-            });
+            if (payload?.ok === true) {
+              const queue = payload.queue ?? {};
+              let text = payload.message ?? (enabled ? t('queueListenerDone') : t('queueListenerOffDone'));
+              if (enabled && queue.otherListener) {
+                text += ` ${t('queueOther')} ${queue.otherListener.deviceName}. ${t('queue409')}`;
+              }
+              if (queue.lastError) text += ` ${t('lastError')} ${queue.lastError}`;
+              setNotice({ kind: 'ok', text });
+            } else {
+              setNotice({ kind: 'bad', text: payload?.message ?? t('queueListenerFailed') });
+            }
             await refresh();
           } catch {
             if (mounted.current) setNotice({ kind: 'bad', text: t('queueListenerFailed') });

@@ -14,6 +14,7 @@ import {
   withTempInbox,
 } from './helpers.mjs'
 import { git } from './git-helpers.mjs'
+import { createGitQueue } from '../lib/queue.mjs'
 
 const TOKEN = '123456789:AAHfakeTOKENvalue_0123456789abcdef'
 const CHAT = '555'
@@ -263,6 +264,72 @@ test('queue/sync и state показывают счётчики; инструм�
       assert.match(text, /Общая очередь команд: настроена/)
       assert.match(text, /Ветка: inbox/)
       assert.match(text, /Роль: исполнитель/)
+    } finally {
+      await ctx.disposeAll()
+      mock.restore()
+      await env.cleanup()
+    }
+  })
+})
+
+test('telegram_listen: включает и выключает слушателя, polling стартует и останавливается', async () => {
+  await withTempInbox(async dir => {
+    const env = await setupQueueEnv()
+    const mock = telegramMock()
+    await seedState(dir)
+    const module = await import('../index.js')
+    const ctx = fakeContext({ token: TOKEN })
+    module.apply(ctx)
+    try {
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_listen')
+      const enabled = await tool.execute({ enabled: true })
+      assert.match(enabled, /✅ Это устройство слушает Telegram/)
+      assert.match(enabled, /Общая очередь: настроена; роль: слушает Telegram/)
+      assert.equal(await waitFor(() => mock.calls.some(call => call.method === 'getUpdates'), 3000), true)
+      const stateOn = await callRoute(ctx, STATE_PATH, {})
+      assert.equal(stateOn.queue.listener, true)
+      assert.equal(stateOn.polling, true)
+      const disabled = await tool.execute({ enabled: false })
+      assert.match(disabled, /⏹ Приём Telegram на этом устройстве выключен/)
+      await sleep(300)
+      const before = mock.calls.filter(call => call.method === 'getUpdates').length
+      await sleep(400)
+      const after = mock.calls.filter(call => call.method === 'getUpdates').length
+      assert.equal(after, before, 'после выключения getUpdates больше не вызывается')
+      const stateOff = await callRoute(ctx, STATE_PATH, {})
+      assert.equal(stateOff.queue.listener, false)
+      assert.equal(stateOff.polling, false)
+    } finally {
+      await ctx.disposeAll()
+      mock.restore()
+      await env.cleanup()
+    }
+  })
+})
+
+test('telegram_listen: предупреждает про 409, если слушает другое устройство', async () => {
+  await withTempInbox(async dir => {
+    const env = await setupQueueEnv()
+    const mock = telegramMock()
+    await seedState(dir)
+    const module = await import('../index.js')
+    const ctx = fakeContext({ token: TOKEN })
+    module.apply(ctx)
+    try {
+      // Another device publishes itself as the listener.
+      const other = createGitQueue({
+        dir: join(env.root, 'clone-other'),
+        remoteUrl: env.remote,
+        device: { id: 'device-other', name: 'Другой ПК' },
+        claimWaitMs: 20,
+      })
+      await other.updateStatus({ listener: true, lastSyncAt: Date.now(), lastError: '', version: '0.4.1' })
+      const sync = await callRoute(ctx, SYNC_PATH, {})
+      assert.equal(sync.ok, true)
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_listen')
+      const text = await tool.execute({ enabled: true })
+      assert.match(text, /Другой ПК/)
+      assert.match(text, /409/)
     } finally {
       await ctx.disposeAll()
       mock.restore()

@@ -1163,6 +1163,17 @@ export function apply(ctx) {
     }
   }
 
+  /**
+   * Tool-facing listener switch: same path as the page route, plus the fresh
+   * queue status so the model can report the resulting role and warnings.
+   * @param enabled - wanted value.
+   * @returns `{ ok, listener, enabled, message, queue }`.
+   */
+  async function setListener(enabled) {
+    const result = await setQueueListener(enabled === true)
+    return { ...result, queue: await queueStatus() }
+  }
+
   // Routes live as one effect: unloading the plugin removes all of them.
   try {
     ctx.effect(() => {
@@ -1402,18 +1413,39 @@ export function apply(ctx) {
   }
 
   try {
-    for (const tool of createTools({
-      ready,
-      tokenInfo,
-      snapshot: () => state,
-      polling: () => poller.running,
-      sendReply,
-      addAllowedChat,
-      currentSessionInfo: currentSessionForLastChat,
-      queueStatus,
-    })) {
-      ctx.tools.register(tool)
-    }
+    // Effect-owned registrations: unloading or replacing the plugin disposes
+    // every tool. Without this, DSH keeps the previous generation's names in the
+    // global tool layer and a reload cannot register the same names again.
+    ctx.effect(() => {
+      const disposers = []
+      for (const tool of createTools({
+        ready,
+        tokenInfo,
+        snapshot: () => state,
+        polling: () => poller.running,
+        sendReply,
+        addAllowedChat,
+        currentSessionInfo: currentSessionForLastChat,
+        queueStatus,
+        setListener,
+      })) {
+        try {
+          disposers.push(ctx.tools.register(tool))
+        } catch (error) {
+          // One bad definition must not hide the rest.
+          console.error(`[dsh-inbox] инструмент ${tool.name} не зарегистрирован:`, error?.message ?? error)
+        }
+      }
+      return () => {
+        for (const dispose of disposers.splice(0)) {
+          try {
+            dispose()
+          } catch {
+            // disposal is best effort
+          }
+        }
+      }
+    }, 'dsh-inbox: tools')
   } catch (error) {
     console.error('[dsh-inbox] инструменты недоступны:', error)
   }

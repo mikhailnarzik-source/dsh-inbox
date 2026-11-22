@@ -36,12 +36,15 @@ async function mount(options = {}) {
   return ctx
 }
 
-test('инструменты: зарегистрированы шесть telegram_* инструментов', async () => {
+test('инструменты: зарегистрированы семь telegram_* инструментов с короткими описаниями', async () => {
   await withTempInbox(async () => {
     const ctx = await mount()
     try {
       const names = ctx.toolsList.map(tool => tool.name).sort()
-      assert.deepEqual(names, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_queue_status', 'telegram_send', 'telegram_status'])
+      assert.deepEqual(names, ['telegram_allow', 'telegram_allowed', 'telegram_listen', 'telegram_messages', 'telegram_queue_status', 'telegram_send', 'telegram_status'])
+      for (const tool of ctx.toolsList) {
+        assert.ok(tool.description.length <= 180, `${tool.name}: description ${tool.description.length} > 180`)
+      }
       for (const tool of ctx.toolsList) {
         assert.equal(typeof tool.description, 'string', `${tool.name}: описание`)
         assert.equal(typeof tool.parameters, 'object', `${tool.name}: parameters`)
@@ -270,5 +273,69 @@ test('telegram_queue_status: без remote показывает режим inlin
     } finally {
       await ctx.disposeAll()
     }
+  })
+})
+
+test('telegram_status: содержит сводку очереди', async () => {
+  await withTempInbox(async () => {
+    const ctx = await mount()
+    try {
+      const text = await ctx.toolsList.find(item => item.name === 'telegram_status').execute({})
+      assert.match(text, /Общая очередь: inline, без remote; роль: исполнитель/)
+      assert.match(text, /новых 0, в работе 0, готово 0/)
+    } finally {
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('telegram_listen: без remote объясняет, что очередь не настроена', async () => {
+  await withTempInbox(async () => {
+    const ctx = await mount()
+    try {
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_listen')
+      assert.deepEqual(tool.parameters.required, ['enabled'])
+      const text = await tool.execute({ enabled: true })
+      assert.match(text, /⚠️ Не удалось переключить роль слушателя/)
+      assert.match(text, /Общая очередь не настроена/)
+      assert.match(text, /dsh-sync\.json/)
+    } finally {
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('регистрация инструментов — effect-owned: disposer снимает все имена', async () => {
+  await withTempInbox(async () => {
+    const registered = []
+    const effects = []
+    const ctx = {
+      tools: {
+        register: definition => {
+          if (registered.some(item => item.name === definition.name)) throw new Error(`tool "${definition.name}" is already registered`)
+          registered.push(definition)
+          return () => {
+            const index = registered.findIndex(item => item.name === definition.name)
+            if (index >= 0) registered.splice(index, 1)
+          }
+        },
+      },
+      connection: { fetch: { register: () => () => {} } },
+      credentials: { resolve: async () => undefined, describe: async () => ({ configured: false, writable: true }) },
+      sessionPersistence: {},
+      get: () => undefined,
+      effect: callback => {
+        const dispose = callback()
+        if (typeof dispose === 'function') effects.push(dispose)
+        return () => {}
+      },
+      on: () => () => {},
+    }
+    const module = await import('../index.js')
+    module.apply(ctx)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    assert.equal(registered.length, 7, 'все семь инструментов зарегистрированы')
+    for (const dispose of effects.reverse()) await dispose()
+    assert.equal(registered.length, 0, 'disposer снимает регистрации — повторная загрузка не упрётся в дубли')
   })
 })

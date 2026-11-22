@@ -21,7 +21,7 @@ const POLLING_PATH = '/api/dsh-inbox/polling'
 const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh'
 
 /** Fresh menu cache, so tests do not call setMyCommands unless they mean to. */
-const FRESH_MENU = { version: '0.4.0', at: Date.now(), ok: true }
+const FRESH_MENU = { version: '0.4.1', at: Date.now(), ok: true }
 
 /** One Telegram text update. */
 function messageUpdate(updateId, text, chatId = CHAT) {
@@ -177,7 +177,7 @@ test('verify публикует меню команд один раз и зап�
     assert.equal(first.mock.myCommands[0].commands.length, 10)
     assert.deepEqual(first.mock.myCommands[0].commands[0], { command: 'help', description: 'Помощь' })
     assert.equal(first.state.menu.ok, true)
-    assert.equal(first.state.menu.publishedVersion, '0.4.0')
+    assert.equal(first.state.menu.publishedVersion, '0.4.1')
   })
   await withTempInbox(async dir => {
     await seedState(dir, { commandsMenu: FRESH_MENU })
@@ -192,10 +192,10 @@ test('verify обновляет меню после смены версии ил
     await seedState(dir, { commandsMenu: { version: '0.3.0', at: Date.now(), ok: true } })
     const changed = await runVerify(dir)
     assert.equal(changed.mock.myCommands.length, 1)
-    assert.equal(changed.state.menu.publishedVersion, '0.4.0')
+    assert.equal(changed.state.menu.publishedVersion, '0.4.1')
   })
   await withTempInbox(async dir => {
-    await seedState(dir, { commandsMenu: { version: '0.4.0', at: Date.now() - 25 * 60 * 60 * 1000, ok: true } })
+    await seedState(dir, { commandsMenu: { version: '0.4.1', at: Date.now() - 25 * 60 * 60 * 1000, ok: true } })
     const expired = await runVerify(dir)
     assert.equal(expired.mock.myCommands.length, 1)
   })
