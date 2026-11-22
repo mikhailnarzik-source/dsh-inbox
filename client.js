@@ -38,6 +38,8 @@ window.__ModuleLoader__.load({
 
     const en = {
       pageTitle: 'Inbox',
+      pageSubtitle: 'Telegram bot, whitelist and DSH session control from the plugin page',
+      refresh: 'Refresh',
       statusConnected: '✅ connected',
       statusNoToken: '⚠️ no token',
       pollingOn: 'receiving on',
@@ -207,6 +209,8 @@ window.__ModuleLoader__.load({
 
     const ru = {
       pageTitle: 'Входящие',
+      pageSubtitle: 'Telegram-бот, белый список и управление сессиями DSH со страницы плагина',
+      refresh: 'Обновить',
       statusConnected: '✅ подключён',
       statusNoToken: '⚠️ токен не сохранён',
       pollingOn: 'приём включён',
@@ -379,64 +383,85 @@ window.__ModuleLoader__.load({
      * from the `--dsw-alias-*` tokens, geometry is plain CSS.
      */
     const CSS = `
-.dsh-inbox{display:flex;flex-direction:column;gap:12px;box-sizing:border-box;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
-.dsh-inbox-title{font-size:14px;font-weight:600;margin:0}
-.dsh-inbox-card{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1)}
+.dsh-inbox{box-sizing:border-box;display:flex;flex-direction:column;gap:16px;width:100%;max-width:960px;margin:0 auto;padding:24px 28px 40px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}
+.dsh-inbox-header{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.dsh-inbox-icon{flex:none;display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:14px;font-size:26px;line-height:1;background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-brand-primary) 92%,transparent),color-mix(in srgb,var(--dsw-alias-brand-primary) 62%,transparent));box-shadow:0 6px 16px color-mix(in srgb,var(--dsw-alias-brand-primary) 22%,transparent)}
+.dsh-inbox-heading{display:flex;flex-direction:column;gap:2px;flex:1 1 240px;min-width:0}
+.dsh-inbox-h1{margin:0;font-size:20px;font-weight:600;line-height:26px;color:var(--dsw-alias-label-primary)}
+.dsh-inbox-subtitle{margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12.5px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.dsh-inbox-header-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+.dsh-inbox-title{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600}
+.dsh-inbox-title::before{content:'';flex:none;width:3px;height:14px;border-radius:2px;background:var(--dsw-alias-brand-primary)}
+.dsh-inbox-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:16px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1)}
+.dsh-inbox-card-title{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;font-weight:600;line-height:20px;color:var(--dsw-alias-label-primary)}
+.dsh-inbox-card-title::before{content:'';flex:none;width:3px;height:14px;border-radius:2px;background:var(--dsw-alias-brand-primary)}
 .dsh-inbox-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.dsh-inbox-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsh-inbox-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
 .dsh-inbox-label{font-weight:600}
 .dsh-inbox-hint{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:17px}
 .dsh-inbox-note{margin:0;font-size:12px;line-height:17px;color:var(--dsw-alias-state-success-primary)}
 .dsh-inbox-note.is-bad{color:var(--dsw-alias-state-error-primary)}
 .dsh-inbox-error{margin:0;font-size:12px;line-height:17px;color:var(--dsw-alias-state-error-primary)}
-.dsh-inbox-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);font-size:12px;line-height:17px;white-space:nowrap}
-.dsh-inbox-pill.is-ok{border-color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
-.dsh-inbox-pill.is-warn{border-color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 14%, transparent)}
-.dsh-inbox-pill.is-bad{border-color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent)}
-.dsh-inbox-input{flex:1 1 260px;min-width:200px;box-sizing:border-box;height:32px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}
-.dsh-inbox-input::placeholder{color:var(--dsw-alias-label-secondary)}
+.dsh-inbox-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:17px;white-space:nowrap}
+.dsh-inbox-pill::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.dsh-inbox-pill.is-ok{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);color:var(--dsw-alias-state-success-primary)}
+.dsh-inbox-pill.is-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,transparent);color:var(--dsw-alias-state-warn-primary)}
+.dsh-inbox-pill.is-bad{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);color:var(--dsw-alias-state-error-primary)}
+.dsh-inbox-input{flex:1 1 260px;min-width:200px;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px}
+.dsh-inbox-input::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dsh-inbox-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsh-inbox-input:disabled{opacity:.6}
-.dsh-inbox-reply{flex:1 1 260px;min-width:200px;box-sizing:border-box;min-height:34px;max-height:120px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:20px;resize:vertical}
+.dsh-inbox-reply{flex:1 1 260px;min-width:200px;box-sizing:border-box;min-height:36px;max-height:120px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:20px;resize:vertical}
 .dsh-inbox-reply:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dsh-inbox-button{appearance:none;box-sizing:border-box;height:32px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer;transition:background-color .12s ease,border-color .12s ease}
-.dsh-inbox-button:hover:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-label-primary) 10%, transparent)}
-.dsh-inbox-button:active:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent)}
+.dsh-inbox-button{appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--dsw-alias-border-l4);border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.dsh-inbox-button:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
+.dsh-inbox-button:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent)}
 .dsh-inbox-button:disabled{opacity:.55;cursor:default}
 .dsh-inbox-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.dsh-inbox-button.is-primary{border-color:var(--dsw-alias-brand-primary);background:color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent)}
-.dsh-inbox-button.is-danger{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
-.dsh-inbox-switch{position:relative;box-sizing:border-box;width:38px;height:22px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.dsh-inbox-button.is-primary{border-color:transparent;background:var(--dsw-alias-brand-primary);color:#fff}
+.dsh-inbox-button.is-primary:hover:not(:disabled){background:var(--dsw-alias-brand-primary);filter:brightness(1.06)}
+.dsh-inbox-button.is-danger{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:transparent;color:var(--dsw-alias-state-error-primary)}
+.dsh-inbox-button.is-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.dsh-inbox-switch{position:relative;box-sizing:border-box;flex:none;width:38px;height:22px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .dsh-inbox-switch.is-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary)}
 .dsh-inbox-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-inbox-switch:disabled{opacity:.55;cursor:default}
 .dsh-inbox-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-bg-overlay);transition:transform .15s ease}
 .dsh-inbox-switch.is-on .dsh-inbox-knob{transform:translateX(16px)}
 .dsh-inbox-messages{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto;padding-right:2px}
-.dsh-inbox-message{display:flex;flex-direction:column;gap:2px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-base)}
-.dsh-inbox-message.is-out{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent)}
+.dsh-inbox-message{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);transition:background-color .12s ease}
+.dsh-inbox-message:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
+.dsh-inbox-message.is-out{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent)}
+.dsh-inbox-message.is-out:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 11%,transparent)}
 .dsh-inbox-message-head{display:flex;align-items:baseline;gap:7px;font-size:11.5px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .dsh-inbox-arrow{font-size:11.5px}
 .dsh-inbox-chat{font-weight:600;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 .dsh-inbox-time{margin-left:auto;font-variant-numeric:tabular-nums}
 .dsh-inbox-text{white-space:pre-wrap;word-break:break-word}
 .dsh-inbox-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-secondary)}
+.dsh-inbox-list li{padding:2px 0;border-radius:6px}
+.dsh-inbox-list li:hover{color:var(--dsw-alias-label-primary)}
 .dsh-inbox-link{color:var(--dsw-alias-brand-primary);font-size:12.5px;text-decoration:underline}
+.dsh-inbox-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:28px 16px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12.5px;line-height:17px}
+.dsh-inbox-empty-icon{font-size:32px;line-height:1}
 .dsh-inbox-summary{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
-.dsh-inbox-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:12px;line-height:17px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-inbox-badge.is-on{border-color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
-.dsh-inbox-badge.is-off{border-color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent)}
-.dsh-inbox-textarea{flex:1 1 260px;min-width:200px;box-sizing:border-box;min-height:56px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:18px;resize:vertical}
+.dsh-inbox-badge{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:12px;line-height:17px;background:var(--dsw-alias-bg-layer-2)}
+.dsh-inbox-badge.is-on{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent)}
+.dsh-inbox-badge.is-off{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent)}
+.dsh-inbox-textarea{flex:0 0 auto;width:100%;box-sizing:border-box;min-height:56px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:18px;resize:vertical}
 .dsh-inbox-textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsh-inbox-textarea:disabled{opacity:.6}
 .dsh-inbox-chips{display:flex;flex-wrap:wrap;gap:6px}
-.dsh-inbox-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-base);font-size:12px;line-height:17px}
-.dsh-inbox-chip.is-blocked{border-color:var(--dsw-alias-state-warn-primary)}
+.dsh-inbox-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-base);font-size:12px;line-height:17px}
+.dsh-inbox-chip:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
+.dsh-inbox-chip.is-blocked{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
 .dsh-inbox-chip-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsh-inbox-chip .dsh-inbox-button{height:24px;padding:0 8px;font-size:11.5px;border-radius:999px}
 .dsh-inbox-command{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.dsh-inbox-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsh-inbox-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base)}
+.dsh-inbox-session:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
 .dsh-inbox-session-name{font-weight:600}
+@media (max-width:760px){.dsh-inbox{padding:18px 16px 32px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}}
 `;
 
     /** Local time for a stored UTC timestamp. */
@@ -913,18 +938,45 @@ window.__ModuleLoader__.load({
 
         return h(
           'div',
-          { className: 'dsh-inbox' },
+          {
+            className: 'dsh-inbox',
+            style: {
+              width: '100%',
+              maxWidth: 960,
+              margin: '0 auto',
+              padding: '24px 28px 40px',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            },
+          },
           h('style', null, CSS),
           h(
-            'div',
-            { className: 'dsh-inbox-head' },
-            h('span', { className: 'dsh-inbox-title' }, t('pageTitle')),
-            h('span', { className: configured ? (snapshot?.botUsername ? 'dsh-inbox-pill is-ok' : 'dsh-inbox-pill is-warn') : 'dsh-inbox-pill is-bad' },
-              configured
-                ? `${t('statusConnected')}${snapshot?.botUsername ? ` @${snapshot.botUsername}` : ''}`
-                : t('statusNoToken')),
-            h('span', { className: enabled ? 'dsh-inbox-pill is-ok' : 'dsh-inbox-pill' },
-              enabled ? t('pollingOn') : t('pollingOff')),
+            'header',
+            { className: 'dsh-inbox-header' },
+            h('span', { className: 'dsh-inbox-icon', 'aria-hidden': true }, '📥'),
+            h(
+              'div',
+              { className: 'dsh-inbox-heading' },
+              h('h1', { className: 'dsh-inbox-h1' }, t('pageTitle')),
+              h('p', { className: 'dsh-inbox-subtitle' }, t('pageSubtitle')),
+            ),
+            h(
+              'div',
+              { className: 'dsh-inbox-header-actions' },
+              h('span', { className: configured ? (snapshot?.botUsername ? 'dsh-inbox-pill is-ok' : 'dsh-inbox-pill is-warn') : 'dsh-inbox-pill is-bad' },
+                configured
+                  ? `${t('statusConnected')}${snapshot?.botUsername ? ` @${snapshot.botUsername}` : ''}`
+                  : t('statusNoToken')),
+              h('span', { className: enabled ? 'dsh-inbox-pill is-ok' : 'dsh-inbox-pill' },
+                enabled ? t('pollingOn') : t('pollingOff')),
+              h('button', {
+                type: 'button',
+                className: 'dsh-inbox-button',
+                onClick: () => void refresh(),
+              }, t('refresh')),
+            ),
           ),
           phase === 'error'
             ? h('p', { className: 'dsh-inbox-error' }, t('loadFailed'), ' ',
@@ -958,7 +1010,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dsh-inbox-card' },
-            h('label', { className: 'dsh-inbox-label', htmlFor: 'dsh-inbox-token' }, t('tokenLabel')),
+            h('label', { className: 'dsh-inbox-card-title', htmlFor: 'dsh-inbox-token' }, t('tokenLabel')),
             h(
               'div',
               { className: 'dsh-inbox-row' },
@@ -1028,7 +1080,7 @@ window.__ModuleLoader__.load({
                 disabled: busy !== '',
                 onClick: () => void setReceiving(!enabled),
               }, h('span', { className: 'dsh-inbox-knob' })),
-              h('span', { className: 'dsh-inbox-label' }, t('receiveTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('receiveTitle')),
               h('button', {
                 type: 'button',
                 className: 'dsh-inbox-button',
@@ -1044,7 +1096,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('allowTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('allowTitle')),
               h('span', { className: 'dsh-inbox-hint' }, `${t('allowCount')} ${allowedIds.length}`),
             ),
             h('textarea', {
@@ -1106,7 +1158,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('securityTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('securityTitle')),
               h('span', { className: groupsEnabled ? 'dsh-inbox-badge is-off' : 'dsh-inbox-badge is-on' },
                 groupsEnabled ? t('groupsValueOn') : t('groupsValueOff')),
             ),
@@ -1151,7 +1203,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-label' }, t('sessionBlockTitle')),
+            h('span', { className: 'dsh-inbox-card-title' }, t('sessionBlockTitle')),
             currentSession === null
               ? h('div', { className: 'dsh-inbox-row' },
                   h('span', { className: 'dsh-inbox-hint' }, t('sessionNone')),
@@ -1181,7 +1233,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('menuTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('menuTitle')),
               h('span', { className: menuOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
                 menuOk ? t('menuOn') : t('menuOff')),
             ),
@@ -1210,7 +1262,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('profileTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('profileTitle')),
               h('span', { className: profileOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
                 profileOk ? (profile.name || t('profileTitle')) : t('profileNotPublished')),
             ),
@@ -1235,7 +1287,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('queueTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('queueTitle')),
               h('span', { className: queueConfigured ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
                 queueConfigured ? t('queueConfigured') : t('queueNotConfigured')),
               queueConfigured
@@ -1305,7 +1357,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-label' }, t('commandsTitle')),
+            h('span', { className: 'dsh-inbox-card-title' }, t('commandsTitle')),
             h(
               'ul',
               { className: 'dsh-inbox-list' },
@@ -1319,7 +1371,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('historyTitle')),
+              h('span', { className: 'dsh-inbox-card-title' }, t('historyTitle')),
               h('span', { className: 'dsh-inbox-hint' },
                 `${t('historyTotal')} ${snapshot?.totalMessages ?? 0} ${t('historyMax')} ${snapshot?.maxMessages ?? 200}`),
               h('button', {
@@ -1330,7 +1382,12 @@ window.__ModuleLoader__.load({
               }, busy === 'clear' ? t('clearing') : t('clear')),
             ),
             messages.length === 0
-              ? h('p', { className: 'dsh-inbox-hint' }, t('historyEmpty'))
+              ? h(
+                  'div',
+                  { className: 'dsh-inbox-empty' },
+                  h('span', { className: 'dsh-inbox-empty-icon', 'aria-hidden': true }, '📭'),
+                  h('span', null, t('historyEmpty')),
+                )
               : h(
                   'div',
                   { className: 'dsh-inbox-messages' },
@@ -1377,7 +1434,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-label' }, t('howTitle')),
+            h('span', { className: 'dsh-inbox-card-title' }, t('howTitle')),
             h('ol', { className: 'dsh-inbox-list' }, steps.map((step, index) => h('li', { key: index }, step))),
             h('a', {
               className: 'dsh-inbox-link',

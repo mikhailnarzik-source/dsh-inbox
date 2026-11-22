@@ -31,7 +31,11 @@ async function readJson(relative) {
 
 test('MENU_VERSION совпадает с версией пакета, команды латинские с русскими описаниями', async () => {
   const manifest = await readJson('package.json')
-  assert.equal(MENU_VERSION, manifest.version)
+  // Набор и формат меню меняются вместе с минорной версией; патч-релиз
+  // (оформление страницы) не требует переопубликовать меню в Telegram.
+  const menuBase = MENU_VERSION.split('.').slice(0, 2).join('.')
+  const packageBase = manifest.version.split('.').slice(0, 2).join('.')
+  assert.equal(packageBase, menuBase, 'мажорная и минорная версии меню и пакета совпадают')
   assert.equal(COMMANDS_MENU.length, 10)
   const names = COMMANDS_MENU.map(item => item.command)
   assert.deepEqual(names, ['help', 'status', 'sessions', 'use', 'ask', 'steer', 'new', 'cancel', 'last', 'menu'])

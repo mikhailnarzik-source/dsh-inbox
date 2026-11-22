@@ -144,6 +144,20 @@ async function loadClient() {
   return { module, locales, injected, registered }
 }
 
+/** Collect every React element (object with a type) in the tree. */
+function elements(node, found = []) {
+  if (node === null || node === undefined) return found
+  if (Array.isArray(node)) {
+    for (const item of node) elements(item, found)
+    return found
+  }
+  if (typeof node === 'object' && node.type !== undefined) {
+    found.push(node)
+    elements(node.props?.children, found)
+  }
+  return found
+}
+
 test('client.js: словари en и ru с одинаковым набором ключей', async () => {
   const { module, locales } = await loadClient()
   assert.equal(locales.length, 1)
@@ -234,4 +248,71 @@ test('client.js: страница рисуется без ошибок и сод
     assert.ok(labels.includes(key), `на странице есть строка ${key}`)
   }
   assert.ok(hrefs(tree).includes('https://t.me/BotFather'), 'ссылка на @BotFather')
+})
+
+test('client.js: страница оформлена по единому стилю', async () => {
+  const { registered } = await loadClient()
+  const { component } = registered[0]
+  const tree = render(component({ subject: { kind: 'bundle', pkg: { name: 'dsh-inbox' } } }))
+  const all = elements(tree)
+
+  // Центрированный контейнер 960: стиль задан и на контейнере, и в CSS.
+  assert.equal(tree.props.className, 'dsh-inbox')
+  assert.equal(tree.props.style.maxWidth, 960)
+  assert.equal(tree.props.style.margin, '0 auto')
+  assert.equal(tree.props.style.padding, '24px 28px 40px')
+  assert.equal(tree.props.style.boxSizing, 'border-box')
+
+  const style = all.find(node => node.type === 'style')
+  assert.ok(style, 'страница подключает свой стиль')
+  const css = String(style.props.children)
+  assert.match(css, /max-width:960px/)
+  assert.match(css, /margin:0 auto/)
+  assert.match(css, /padding:24px 28px 40px/)
+  assert.match(css, /@media \(max-width:760px\)/)
+  assert.match(css, /--dsw-alias-bg-layer-1/)
+  assert.match(css, /border-radius:14px/)
+  assert.match(css, /height:36px/)
+  assert.match(css, /:focus-visible/)
+
+  // Шапка: иконка-квадрат 52, заголовок, подзаголовок, чипы и кнопка «Обновить».
+  const header = all.find(node => node.type === 'header')
+  assert.ok(header, 'шапка страницы')
+  assert.equal(header.props.className, 'dsh-inbox-header')
+  const icon = all.find(node => node.props?.className === 'dsh-inbox-icon')
+  assert.ok(icon, 'иконка в шапке')
+  assert.equal(icon.props['aria-hidden'], true)
+  assert.equal(texts(icon).join(''), '📥')
+  assert.equal(icon.props.style ?? null, null)
+  assert.match(css, /\.dsh-inbox-icon\{[^}]*width:52px/)
+  assert.equal(all.find(node => node.props?.className === 'dsh-inbox-h1').props.children, 'inbox.pageTitle')
+  assert.equal(all.find(node => node.props?.className === 'dsh-inbox-subtitle').props.children, 'inbox.pageSubtitle')
+  assert.match(css, /\.dsh-inbox-h1\{[^}]*font-size:20px/)
+  assert.match(css, /\.dsh-inbox-h1\{[^}]*font-weight:600/)
+
+  const pills = all.filter(node => typeof node.props?.className === 'string' && node.props.className.startsWith('dsh-inbox-pill'))
+  assert.ok(pills.length >= 2, 'чипы статуса в шапке')
+  assert.match(css, /\.dsh-inbox-pill::before/)
+
+  const refreshButton = all.find(node => node.props?.className === 'dsh-inbox-button'
+    && texts(node).join('') === 'inbox.refresh')
+  assert.ok(refreshButton, 'кнопка «Обновить» в шапке')
+  assert.equal(typeof refreshButton.props.onClick, 'function', 'обновление подключено')
+
+  // Карточки-секции: каждая с заголовком и акцентной полоской из CSS.
+  const cards = all.filter(node => node.props?.className === 'dsh-inbox-card')
+  assert.ok(cards.length >= 8, `секций на странице: ${cards.length}`)
+  for (const card of cards) {
+    const titled = elements(card).some(node => node.props?.className === 'dsh-inbox-card-title')
+    assert.ok(titled, 'у каждой карточки есть заголовок секции')
+  }
+  assert.match(css, /\.dsh-inbox-card-title::before\{[^}]*width:3px/)
+
+  // Списки: hover и пустое состояние истории.
+  assert.match(css, /\.dsh-inbox-message:hover/)
+  assert.match(css, /\.dsh-inbox-session:hover/)
+  assert.match(css, /\.dsh-inbox-empty\{/)
+  const empty = all.find(node => node.props?.className === 'dsh-inbox-empty')
+  assert.ok(empty, 'пустое состояние истории')
+  assert.ok(texts(empty).join(' ').includes('inbox.historyEmpty'))
 })

@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.5.0 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.5.1 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.5.0')
+  assert.equal(manifest.version, '0.5.1')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')
@@ -95,7 +95,9 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
   }
   const icon = await readFile(join(ROOT, 'icon.svg'), 'utf8')
   assert.match(icon, /^<svg /)
-  assert.match(icon, /viewBox="0 0 24 24"/)
+  // Иконка плагина — квадратная плитка с градиентом (24×24 было до редизайна).
+  assert.match(icon, /viewBox="0 0 (24 24|48 48)"/)
+  assert.match(icon, /linearGradient/)
   assert.ok(!icon.includes('\uFFFD'))
 })
 
