@@ -11,6 +11,8 @@ import {
   clearMessages,
   emptyState,
   lastChat,
+  normalizeChatId,
+  normalizeChatIds,
   normalizeState,
   readState,
   sanitizeMessage,
@@ -32,14 +34,18 @@ function record(overrides = {}) {
   }
 }
 
-test('emptyState: пустая история с версией и выключенным приёмом', () => {
+test('emptyState: пустая история с версией, выключенным приёмом и пустым белым списком', () => {
   assert.deepEqual(emptyState(), {
     version: STATE_VERSION,
     offset: 0,
     enabled: false,
     botUsername: '',
+    allowedChatIds: [],
+    currentChatSession: {},
+    pendingLists: {},
     messages: [],
   })
+  assert.equal(STATE_VERSION, 2)
 })
 
 test('normalizeState: мусор и неверные типы дают пустое состояние', () => {
@@ -63,6 +69,47 @@ test('normalizeState: записи без chatId или направления �
   assert.equal(state.messages.length, 2)
   assert.equal(state.messages[0].chatId, '555')
   assert.equal(state.messages[1].direction, 'out')
+})
+
+test('normalizeState: белый список, текущие сессии и списки сессий очищаются', () => {
+  const state = normalizeState({
+    allowedChatIds: ['123', ' 123 ', '-1001234567890', 'abc', '', 42, null],
+    currentChatSession: { '123': 'session-a', 'плохо': 'session-b', '456': '   ' },
+    pendingLists: { '123': ['s1', 's2', ' ', 's1'], 'abc': ['s3'], '456': 'нет' },
+  })
+  assert.deepEqual(state.allowedChatIds, ['123', '-1001234567890', '42'])
+  assert.deepEqual(state.currentChatSession, { '123': 'session-a' })
+  assert.deepEqual(state.pendingLists, { '123': ['s1', 's2'] })
+})
+
+test('normalizeState: файл версии 1 без новых полей читается как совместимый', () => {
+  const state = normalizeState({
+    version: 1,
+    offset: 5,
+    enabled: false,
+    messages: [record()],
+  })
+  assert.equal(state.offset, 5)
+  assert.deepEqual(state.allowedChatIds, [])
+  assert.deepEqual(state.currentChatSession, {})
+  assert.deepEqual(state.pendingLists, {})
+  assert.equal(state.messages.length, 1)
+})
+
+test('normalizeChatIds: только числа, без дублей и в исходном порядке', () => {
+  assert.deepEqual(normalizeChatIds(['5', ' 5 ', '-7', 'x', '007']), ['5', '-7', '007'])
+  assert.deepEqual(normalizeChatIds('5'), [])
+  assert.deepEqual(normalizeChatIds([1, 2]), ['1', '2'])
+  assert.equal(normalizeChatId('-1001234567890'), '-1001234567890')
+  assert.equal(normalizeChatId('+7'), '')
+  assert.equal(normalizeChatId(''), '')
+})
+
+test('sanitizeMessage: флаг blocked сохраняется только как true', () => {
+  assert.equal(sanitizeMessage({ ...record(), blocked: true }).blocked, true)
+  assert.equal('blocked' in sanitizeMessage(record()), false)
+  assert.equal('blocked' in sanitizeMessage({ ...record(), blocked: false }), false)
+  assert.equal('blocked' in sanitizeMessage({ ...record(), blocked: 'да' }), false)
 })
 
 test('normalizeState: история обрезается до MAX_MESSAGES последних записей', () => {

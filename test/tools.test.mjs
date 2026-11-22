@@ -36,12 +36,12 @@ async function mount(options = {}) {
   return ctx
 }
 
-test('инструменты: зарегистрированы telegram_status, telegram_messages, telegram_send', async () => {
+test('инструменты: зарегистрированы пять telegram_* инструментов', async () => {
   await withTempInbox(async () => {
     const ctx = await mount()
     try {
       const names = ctx.toolsList.map(tool => tool.name).sort()
-      assert.deepEqual(names, ['telegram_messages', 'telegram_send', 'telegram_status'])
+      assert.deepEqual(names, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_send', 'telegram_status'])
       for (const tool of ctx.toolsList) {
         assert.equal(typeof tool.description, 'string', `${tool.name}: описание`)
         assert.equal(typeof tool.parameters, 'object', `${tool.name}: parameters`)
@@ -57,6 +57,8 @@ test('инструменты: зарегистрированы telegram_status, 
       assert.ok(send.parameters.properties.chatId)
       const messages = ctx.toolsList.find(tool => tool.name === 'telegram_messages')
       assert.ok(messages.parameters.properties.limit)
+      const allow = ctx.toolsList.find(tool => tool.name === 'telegram_allow')
+      assert.deepEqual(allow.parameters.required, ['chatId'])
     } finally {
       await ctx.disposeAll()
     }
@@ -156,6 +158,80 @@ test('telegram_send: отвечает в последний чат и пишет
       assert.equal(file.messages[1].text, 'Ответ ассистента')
     } finally {
       mock.restore()
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('telegram_allowed: пустой белый список предупреждает, что управлять нельзя', async () => {
+  await withTempInbox(async () => {
+    const ctx = await mount()
+    try {
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_allowed')
+      const text = await tool.execute({})
+      assert.match(text, /Белый список пуст/)
+      assert.match(text, /telegram_allow/)
+    } finally {
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('telegram_allow: добавляет чат и пишет его в state.json', async () => {
+  await withTempInbox(async dir => {
+    const ctx = await mount()
+    try {
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_allow')
+      const text = await tool.execute({ chatId: '777' })
+      assert.match(text, /Чат добавлен в белый список/)
+      assert.match(text, /777/)
+      const file = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'))
+      assert.deepEqual(file.allowedChatIds, ['777'])
+      const again = await tool.execute({ chatId: '777' })
+      assert.match(again, /уже был/)
+      await assert.rejects(() => tool.execute({ chatId: 'не чат' }), /Неверный chatId/)
+      const list = await ctx.toolsList.find(item => item.name === 'telegram_allowed').execute({})
+      assert.match(list, /777/)
+      const status = await ctx.toolsList.find(item => item.name === 'telegram_status').execute({})
+      assert.match(status, /Белый список: 1 чатов/)
+    } finally {
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('telegram_status: показывает историю и белую команду', async () => {
+  await withTempInbox(async dir => {
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ ...SEED, allowedChatIds: ['555'] }), 'utf8')
+    const ctx = await mount({ token: TOKEN })
+    try {
+      const text = await ctx.toolsList.find(item => item.name === 'telegram_status').execute({})
+      assert.match(text, /Белый список: 1 чатов: 555/)
+      assert.match(text, /Приём сообщений: выключен/)
+    } finally {
+      await ctx.disposeAll()
+    }
+  })
+})
+
+test('telegram_messages: сообщение из чужого чата помечено «нет доступа»', async () => {
+  await withTempInbox(async dir => {
+    const messages = [{
+      chatId: '999',
+      chatTitle: 'Незнакомец',
+      from: 'Незнакомец',
+      text: '/help',
+      at: '2026-11-22T10:00:00.000Z',
+      direction: 'in',
+      blocked: true,
+    }]
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ ...SEED, messages }), 'utf8')
+    const ctx = await mount({ token: TOKEN })
+    try {
+      const text = await ctx.toolsList.find(item => item.name === 'telegram_messages').execute({})
+      assert.match(text, /⛔ нет доступа/)
+      assert.match(text, /Незнакомец/)
+    } finally {
       await ctx.disposeAll()
     }
   })

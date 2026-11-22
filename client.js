@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
     const SEND_PATH = '/api/dsh-inbox/send';
     const POLLING_PATH = '/api/dsh-inbox/polling';
     const CLEAR_PATH = '/api/dsh-inbox/messages/clear';
+    const ALLOWLIST_PATH = '/api/dsh-inbox/allowlist';
+    const SESSION_RESET_PATH = '/api/dsh-inbox/session/reset';
     const REFRESH_MS = 4000;
 
     const en = {
@@ -88,6 +90,40 @@ window.__ModuleLoader__.load({
       step5: 'Answer from the "Reply" field, or ask the agent: it has the tools telegram_status, telegram_messages and telegram_send.',
       botFather: 'Open @BotFather',
       scopeNote: 'This is an MVP: mail is not supported yet, only Telegram messages. The history lives only in DSH and does not replace the Telegram chat.',
+      allowTitle: 'Whitelist',
+      allowHint: 'Only these chats may control DSH: /sessions, /use, /ask, /steer, /new, /cancel. Enter Telegram chat ids separated by commas; an empty list means nobody can control DSH.',
+      allowPlaceholder: '123456789, -1001234567890',
+      allowSave: 'Save list',
+      allowSaving: 'Saving…',
+      allowSaved: 'List saved.',
+      allowFailed: 'Could not save the list.',
+      allowEmpty: 'The list is empty: nobody can control DSH from Telegram.',
+      allowCount: 'Chats in the list:',
+      allowCurrent: 'allowed',
+      allowAdd: 'Allow this chat',
+      allowAddDone: 'Chat allowed.',
+      allowAddFailed: 'Could not allow the chat.',
+      chatsTitle: 'Chats in the history',
+      sessionBlockTitle: 'Current session for the chat',
+      sessionNone: 'not chosen',
+      sessionRunning: 'running',
+      sessionIdle: 'idle',
+      sessionReset: 'Reset',
+      sessionResetDone: 'Session unlinked from the chat.',
+      sessionResetFailed: 'Could not reset the session.',
+      sessionHint: 'The session is chosen in Telegram: /sessions, then /use N. Plain text from an allowed chat is sent to it as /ask.',
+      commandsTitle: 'Bot commands',
+      cmdHelp: '/help — cheat sheet',
+      cmdStatus: '/status — bot, whitelist and current session',
+      cmdSessions: '/sessions — last 10 DSH sessions',
+      cmdUse: '/use N — pick a session for this chat',
+      cmdAsk: '/ask <text> — queue a message (plain text works too)',
+      cmdSteer: '/steer <text> — steer the running turn',
+      cmdNew: '/new <text> — create a session and send the text',
+      cmdCancel: '/cancel — cancel the current turn',
+      cmdLast: '/last — last 5 Inbox messages',
+      blockedBadge: '⛔ no access',
+      blockedHint: 'A chat outside the list cannot control DSH; allow it from the chat list below.',
     };
 
     const ru = {
@@ -150,6 +186,40 @@ window.__ModuleLoader__.load({
       step5: 'Ответьте из поля «Ответ» или попросите ассистента: у него есть инструменты telegram_status, telegram_messages и telegram_send.',
       botFather: 'Открыть @BotFather',
       scopeNote: 'Это MVP: почта пока не поддерживается, реализованы только сообщения Telegram. История живёт только в DSH и не заменяет чат Telegram.',
+      allowTitle: 'Белый список',
+      allowHint: 'Только эти чаты могут управлять DSH: /sessions, /use, /ask, /steer, /new, /cancel. Введите chatId Telegram через запятую; пустой список — управлять нельзя никому.',
+      allowPlaceholder: '123456789, -1001234567890',
+      allowSave: 'Сохранить список',
+      allowSaving: 'Сохраняем…',
+      allowSaved: 'Список сохранён.',
+      allowFailed: 'Не удалось сохранить список.',
+      allowEmpty: 'Список пуст: управлять DSH из Telegram нельзя никому.',
+      allowCount: 'Чатов в списке:',
+      allowCurrent: 'разрешён',
+      allowAdd: 'Разрешить этот чат',
+      allowAddDone: 'Чат разрешён.',
+      allowAddFailed: 'Не удалось разрешить чат.',
+      chatsTitle: 'Чаты в истории',
+      sessionBlockTitle: 'Текущая сессия для чата',
+      sessionNone: 'не выбрана',
+      sessionRunning: 'выполняется',
+      sessionIdle: 'ожидает',
+      sessionReset: 'Сбросить',
+      sessionResetDone: 'Сессия отвязана от чата.',
+      sessionResetFailed: 'Не удалось сбросить сессию.',
+      sessionHint: 'Сессия выбирается в Telegram: /sessions, затем /use N. Обычный текст из разрешённого чата уходит в неё как /ask.',
+      commandsTitle: 'Команды бота',
+      cmdHelp: '/help — справка',
+      cmdStatus: '/status — состояние бота, белого списка и текущей сессии',
+      cmdSessions: '/sessions — 10 последних сессий DSH',
+      cmdUse: '/use N — выбрать сессию для этого чата',
+      cmdAsk: '/ask <текст> — поставить сообщение в очередь (обычный текст тоже работает)',
+      cmdSteer: '/steer <текст> — вклинить сообщение в текущий ход',
+      cmdNew: '/new <текст> — создать сессию и отправить в неё текст',
+      cmdCancel: '/cancel — отменить текущий ход',
+      cmdLast: '/last — последние 5 сообщений «Входящих»',
+      blockedBadge: '⛔ нет доступа',
+      blockedHint: 'Чат вне списка не может управлять DSH; разрешите его в списке чатов ниже.',
     };
 
     /**
@@ -203,6 +273,18 @@ window.__ModuleLoader__.load({
 .dsh-inbox-summary{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px}
 .dsh-inbox-badge{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;font-size:12px;line-height:17px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-inbox-badge.is-on{border-color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent)}
+.dsh-inbox-badge.is-off{border-color:var(--dsw-alias-state-warn-primary);background:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 12%, transparent)}
+.dsh-inbox-textarea{flex:1 1 260px;min-width:200px;box-sizing:border-box;min-height:56px;padding:7px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:18px;resize:vertical}
+.dsh-inbox-textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dsh-inbox-textarea:disabled{opacity:.6}
+.dsh-inbox-chips{display:flex;flex-wrap:wrap;gap:6px}
+.dsh-inbox-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-base);font-size:12px;line-height:17px}
+.dsh-inbox-chip.is-blocked{border-color:var(--dsw-alias-state-warn-primary)}
+.dsh-inbox-chip-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsh-inbox-chip .dsh-inbox-button{height:24px;padding:0 8px;font-size:11.5px;border-radius:999px}
+.dsh-inbox-command{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsh-inbox-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dsh-inbox-session-name{font-weight:600}
 `;
 
     /** Local time for a stored UTC timestamp. */
@@ -278,6 +360,8 @@ window.__ModuleLoader__.load({
         const [busy, setBusy] = React.useState('');
         const [notice, setNotice] = React.useState(null);
         const [verifyPhase, setVerifyPhase] = React.useState('idle');
+        const [allowDraft, setAllowDraft] = React.useState('');
+        const [allowDirty, setAllowDirty] = React.useState(false);
         const mounted = React.useRef(true);
 
         const refresh = React.useCallback(async () => {
@@ -329,6 +413,13 @@ window.__ModuleLoader__.load({
           const timer = setTimeout(() => setNotice(null), 8000);
           return () => clearTimeout(timer);
         }, [notice]);
+
+        // The allow-list field follows the host until the user starts editing it.
+        React.useEffect(() => {
+          if (allowDirty) return;
+          const ids = Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : [];
+          setAllowDraft(ids.join(', '));
+        }, [snapshot?.allowedChatIds?.join(','), allowDirty]);
 
         const run = async (action, work) => {
           if (busy !== '') return;
@@ -438,6 +529,54 @@ window.__ModuleLoader__.load({
           }
         });
 
+        const saveAllowlist = () => run('allow', async () => {
+          const ids = allowDraft
+            .split(/[\s,;]+/)
+            .map(item => item.trim())
+            .filter(item => item !== '');
+          try {
+            const payload = await call(ALLOWLIST_PATH, { chatIds: ids });
+            if (!mounted.current) return;
+            if (payload?.ok === true) {
+              setAllowDirty(false);
+              setNotice({ kind: 'ok', text: payload.message ?? t('allowSaved') });
+            } else {
+              setNotice({ kind: 'bad', text: payload?.message ?? t('allowFailed') });
+            }
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('allowFailed') });
+          }
+        });
+
+        const allowThisChat = chatId => run('allow-chat', async () => {
+          try {
+            const payload = await call(ALLOWLIST_PATH, { add: chatId });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('allowAddDone')) : (payload?.message ?? t('allowAddFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('allowAddFailed') });
+          }
+        });
+
+        const resetSession = chatId => run('session', async () => {
+          try {
+            const payload = await call(SESSION_RESET_PATH, { chatId });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('sessionResetDone')) : (payload?.message ?? t('sessionResetFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('sessionResetFailed') });
+          }
+        });
+
         const configured = snapshot?.configured === true;
         const enabled = snapshot?.enabled === true;
         const messages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
@@ -460,6 +599,20 @@ window.__ModuleLoader__.load({
               ? 'dsh-inbox-pill is-warn'
               : 'dsh-inbox-pill';
         const steps = [t('step1'), t('step2'), t('step3'), t('step4'), t('step5')];
+        const allowedIds = Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : [];
+        const chats = Array.isArray(snapshot?.chats) ? snapshot.chats : [];
+        const currentSession = snapshot?.currentSession ?? null;
+        const commandLines = [
+          t('cmdHelp'),
+          t('cmdStatus'),
+          t('cmdSessions'),
+          t('cmdUse'),
+          t('cmdAsk'),
+          t('cmdSteer'),
+          t('cmdNew'),
+          t('cmdCancel'),
+          t('cmdLast'),
+        ];
 
         return h(
           'div',
@@ -577,6 +730,105 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'dsh-inbox-row' },
+              h('span', { className: 'dsh-inbox-label' }, t('allowTitle')),
+              h('span', { className: 'dsh-inbox-hint' }, `${t('allowCount')} ${allowedIds.length}`),
+            ),
+            h('textarea', {
+              className: 'dsh-inbox-textarea',
+              rows: 2,
+              placeholder: t('allowPlaceholder'),
+              value: allowDraft,
+              disabled: busy !== '',
+              onChange: event => {
+                setAllowDirty(true);
+                setAllowDraft(event.target.value);
+              },
+            }),
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('button', {
+                type: 'button',
+                className: 'dsh-inbox-button is-primary',
+                disabled: busy !== '',
+                onClick: () => void saveAllowlist(),
+              }, busy === 'allow' ? t('allowSaving') : t('allowSave')),
+            ),
+            h('p', { className: 'dsh-inbox-hint' }, t('allowHint')),
+            allowedIds.length === 0
+              ? h('p', { className: 'dsh-inbox-error' }, t('allowEmpty'))
+              : null,
+            chats.length > 0
+              ? h(
+                  'div',
+                  { className: 'dsh-inbox-row' },
+                  h('span', { className: 'dsh-inbox-label' }, t('chatsTitle')),
+                  h(
+                    'div',
+                    { className: 'dsh-inbox-chips' },
+                    chats.map(chat => h(
+                      'span',
+                      { key: chat.chatId, className: chat.allowed ? 'dsh-inbox-chip' : 'dsh-inbox-chip is-blocked' },
+                      h('span', { className: 'dsh-inbox-chip-name', title: `${chat.chatTitle} (${chat.chatId})` },
+                        chat.chatTitle === '' ? chat.chatId : chat.chatTitle),
+                      chat.allowed
+                        ? h('span', { className: 'dsh-inbox-badge is-on' }, t('allowCurrent'))
+                        : h('button', {
+                            type: 'button',
+                            className: 'dsh-inbox-button',
+                            disabled: busy !== '',
+                            onClick: () => void allowThisChat(chat.chatId),
+                          }, t('allowAdd')),
+                    )),
+                  ),
+                )
+              : null,
+            h('p', { className: 'dsh-inbox-hint' }, t('blockedHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h('span', { className: 'dsh-inbox-label' }, t('sessionBlockTitle')),
+            currentSession === null
+              ? h('div', { className: 'dsh-inbox-row' },
+                  h('span', { className: 'dsh-inbox-hint' }, t('sessionNone')),
+                  h('span', { className: 'dsh-inbox-hint' }, t('sessionHint')))
+              : h(
+                  'div',
+                  { className: 'dsh-inbox-session' },
+                  h('span', { className: 'dsh-inbox-session-name' },
+                    currentSession.title === '' ? currentSession.sessionId.slice(0, 8) : currentSession.title),
+                  h('span', { className: 'dsh-inbox-hint' },
+                    currentSession.sessionId.length > 8 ? currentSession.sessionId.slice(0, 8) : currentSession.sessionId),
+                  h('span', { className: currentSession.running ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
+                    currentSession.running ? t('sessionRunning') : t('sessionIdle')),
+                  h('span', { className: 'dsh-inbox-hint' }, currentSession.chatTitle),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-inbox-button',
+                    disabled: busy !== '',
+                    onClick: () => void resetSession(currentSession.chatId),
+                  }, t('sessionReset')),
+                ),
+            currentSession === null ? null : h('p', { className: 'dsh-inbox-hint' }, t('sessionHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h('span', { className: 'dsh-inbox-label' }, t('commandsTitle')),
+            h(
+              'ul',
+              { className: 'dsh-inbox-list' },
+              commandLines.map((line, index) => h('li', { key: index },
+                h('span', { className: 'dsh-inbox-command' }, line))),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
               h('span', { className: 'dsh-inbox-label' }, t('historyTitle')),
               h('span', { className: 'dsh-inbox-hint' },
                 `${t('historyTotal')} ${snapshot?.totalMessages ?? 0} ${t('historyMax')} ${snapshot?.maxMessages ?? 200}`),
@@ -602,6 +854,9 @@ window.__ModuleLoader__.load({
                         { className: 'dsh-inbox-message-head' },
                         h('span', { className: 'dsh-inbox-arrow' }, out ? '➡' : '⬅'),
                         h('span', null, out ? t('outgoing') : t('incoming')),
+                        message.blocked === true
+                          ? h('span', { className: 'dsh-inbox-badge is-off' }, t('blockedBadge'))
+                          : null,
                         h('span', { className: 'dsh-inbox-chat', title: message.chatTitle }, message.chatTitle),
                         h('span', { className: 'dsh-inbox-time' }, formatTime(message.at)),
                       ),

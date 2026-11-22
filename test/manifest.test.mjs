@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.1.0 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.2.0 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.1.0')
+  assert.equal(manifest.version, '0.2.0')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')
@@ -60,8 +60,10 @@ test('локали ru и en: meta.title/description/detail и документ �
   const ru = await readJson('locale/ru.json')
   assert.match(ru.meta.title, /Входящие/)
   assert.match(ru.meta.description, /Telegram/)
+  assert.match(ru.meta.description, /белый список/i)
   const en = await readJson('locale/en.json')
   assert.equal(en.meta.title, 'Inbox')
+  assert.match(en.meta.description, /whitelist/i)
 })
 
 test('ресурсы на месте: index.js, client.js, lib, icon.svg, README, docs/DETAIL.md', async () => {
@@ -77,6 +79,10 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
     'lib/telegram.mjs',
     'lib/polling.mjs',
     'lib/tools.mjs',
+    'lib/sessions.mjs',
+    'lib/commands.mjs',
+    'lib/replies.mjs',
+    'lib/access.mjs',
   ]) {
     await exists(relative)
   }
@@ -86,10 +92,10 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
   assert.ok(!icon.includes('\uFFFD'))
 })
 
-test('index.js объявляет имя, inject и apply, не содержит прямых секретов', async () => {
+test('index.js объявляет имя, inject, apply и не содержит прямых секретов', async () => {
   const module = await import('../index.js')
   assert.equal(module.name, 'dsh-inbox')
-  assert.deepEqual(module.inject, ['tools', 'credentials', 'connection', 'sessionPersistence'])
+  assert.deepEqual(module.inject, ['tools', 'credentials', 'connection', 'sessionPersistence', 'sessionQuery'])
   assert.equal(typeof module.apply, 'function')
   const source = await readFile(join(ROOT, 'index.js'), 'utf8')
   for (const path of [
@@ -98,6 +104,8 @@ test('index.js объявляет имя, inject и apply, не содержит
     '/api/dsh-inbox/send',
     '/api/dsh-inbox/polling',
     '/api/dsh-inbox/messages/clear',
+    '/api/dsh-inbox/allowlist',
+    '/api/dsh-inbox/session/reset',
   ]) {
     assert.ok(source.includes(path), `маршрут ${path} объявлен`)
   }
@@ -105,15 +113,17 @@ test('index.js объявляет имя, inject и apply, не содержит
   const toolNames = createTools({
     ready: Promise.resolve(),
     tokenInfo: async () => ({ configured: false, writable: true }),
-    snapshot: () => ({ messages: [], botUsername: '', enabled: false, lastError: '' }),
+    snapshot: () => ({ messages: [], botUsername: '', enabled: false, lastError: '', allowedChatIds: [] }),
     polling: () => false,
     sendReply: async () => ({}),
+    addAllowedChat: async () => ({ changed: true, allowedChatIds: [] }),
+    currentSessionInfo: async () => null,
   }).map(tool => tool.name).sort()
-  assert.deepEqual(toolNames, ['telegram_messages', 'telegram_send', 'telegram_status'])
+  assert.deepEqual(toolNames, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_send', 'telegram_status'])
   assert.equal(source.includes('\uFFFD'), false, 'нет битых символов')
 })
 
-test('README и docs/DETAIL.md: инструкция для новичка и @BotFather', async () => {
+test('README и docs/DETAIL.md: инструкция для новичка, белый список и команды', async () => {
   const readme = await readFile(join(ROOT, 'README.md'), 'utf8')
   assert.match(readme, /@BotFather/)
   assert.match(readme, /\/newbot/)
@@ -121,6 +131,12 @@ test('README и docs/DETAIL.md: инструкция для новичка и @B
   assert.match(readme, /Плагины/)
   assert.match(readme, /Как открыть/)
   assert.match(readme, /Ограничения/)
+  assert.match(readme, /Белый список/)
+  assert.match(readme, /\/sessions/)
+  assert.match(readme, /\/ask/)
+  assert.match(readme, /\/steer/)
+  assert.match(readme, /\/new/)
+  assert.match(readme, /\/cancel/)
   const detail = await readFile(join(ROOT, 'docs', 'DETAIL.md'), 'utf8')
   assert.match(detail, /@BotFather/)
   assert.match(detail, /Что это и зачем/)
@@ -130,6 +146,9 @@ test('README и docs/DETAIL.md: инструкция для новичка и @B
   assert.match(detail, /Частые ошибки/)
   assert.match(detail, /Ограничения/)
   assert.match(detail, /Связанные плагины/)
+  assert.match(detail, /Белый список/)
+  assert.match(detail, /Команды бота/)
+  assert.match(detail, /Управление сессиями/)
   for (const text of [readme, detail]) {
     assert.equal(text.includes('\uFFFD'), false, 'нет битых символов')
   }

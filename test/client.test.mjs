@@ -201,11 +201,24 @@ test('client.js: страница рисуется без ошибок и сод
   assert.notEqual(element, null)
   const tree = render(element)
   const allClasses = classes(tree).join(' ')
-  for (const className of ['dsh-inbox', 'dsh-inbox-card', 'dsh-inbox-input', 'dsh-inbox-switch', 'dsh-inbox-reply']) {
+  for (const className of ['dsh-inbox', 'dsh-inbox-card', 'dsh-inbox-input', 'dsh-inbox-switch', 'dsh-inbox-reply', 'dsh-inbox-textarea']) {
     assert.ok(allClasses.includes(className), `на странице есть ${className}`)
   }
   const labels = texts(tree).join(' ')
-  for (const key of ['inbox.tokenLabel', 'inbox.receiveTitle', 'inbox.historyTitle', 'inbox.historyEmpty', 'inbox.replyLabel', 'inbox.howTitle']) {
+  for (const key of [
+    'inbox.tokenLabel',
+    'inbox.receiveTitle',
+    'inbox.historyTitle',
+    'inbox.historyEmpty',
+    'inbox.replyLabel',
+    'inbox.howTitle',
+    'inbox.allowTitle',
+    'inbox.allowEmpty',
+    'inbox.sessionBlockTitle',
+    'inbox.commandsTitle',
+    'inbox.cmdSessions',
+    'inbox.cmdCancel',
+  ]) {
     assert.ok(labels.includes(key), `на странице есть строка ${key}`)
   }
   assert.ok(hrefs(tree).includes('https://t.me/BotFather'), 'ссылка на @BotFather')

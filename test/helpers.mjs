@@ -27,7 +27,8 @@ export async function withTempInbox(body) {
 
 /**
  * Minimal plugin context that records tools, routes and effect disposers.
- * @param options - `{ token?, writable? }` for the credential store stub.
+ * @param options - `{ token?, writable?, controller?, query? }`: credential
+ *   store stub and optional DSH session services.
  * @returns the fake context.
  */
 export function fakeContext(options = {}) {
@@ -44,6 +45,12 @@ export function fakeContext(options = {}) {
       describe: async () => ({ configured: token !== '', writable }),
     },
     sessionPersistence: {},
+    sessionQuery: options.query,
+    get: name => {
+      if (name === 'sessionController') return options.controller
+      if (name === 'sessionQuery') return options.query
+      return undefined
+    },
     effect: callback => {
       const dispose = callback()
       if (typeof dispose === 'function') effects.push(dispose)
@@ -126,6 +133,34 @@ export function installFetch(handler) {
       globalThis.fetch = previous
     },
   }
+}
+
+/**
+ * A Telegram Bot API double: `getMe`, `getUpdates` and `sendMessage` with
+ * built-in defaults; every outgoing text is remembered in `sent`.
+ * @param options - overrides per method.
+ * @returns `{ calls, sent, restore }`.
+ */
+export function telegramMock(options = {}) {
+  const sent = []
+  const mock = installFetch(({ method, body }) => {
+    if (method === 'getMe') {
+      return options.getMe !== undefined
+        ? options.getMe(body)
+        : telegramResponse({ id: 1, is_bot: true, username: 'dsh_inbox_test_bot' })
+    }
+    if (method === 'getUpdates') {
+      return options.getUpdates !== undefined ? options.getUpdates(body) : telegramResponse([])
+    }
+    if (method === 'sendMessage') {
+      sent.push(body)
+      return options.sendMessage !== undefined
+        ? options.sendMessage(body)
+        : telegramResponse({ message_id: sent.length })
+    }
+    return telegramError(404, 'Not Found', 404)
+  })
+  return { calls: mock.calls, sent, restore: mock.restore }
 }
 
 /**
