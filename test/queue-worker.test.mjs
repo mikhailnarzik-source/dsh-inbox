@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { createQueueWorker } from '../lib/queue-worker.mjs'
+import { WORKER_INTERVAL_MS, createQueueWorker } from '../lib/queue-worker.mjs'
 import { commandItem, withQueueWorld } from './git-helpers.mjs'
 
 test('worker: команду выполняет ровно одно устройство', async () => {
@@ -54,6 +54,29 @@ test('worker: без отправки execute ответ уходит через
     assert.equal(sent[0].chatId, '555')
     await worker.runNow()
     assert.equal(sent.length, 1, 'повторного ответа нет')
+  })
+})
+
+test('worker: интервал 1–1,5 с и быстрый захват на одном устройстве', async () => {
+  assert.ok(WORKER_INTERVAL_MS >= 1000 && WORKER_INTERVAL_MS <= 1500, `интервал ${WORKER_INTERVAL_MS}`)
+  await withQueueWorld(async ({ make }) => {
+    const queue = make({ id: 'dev-a', name: 'A' })
+    await queue.enqueueCommand(commandItem(1301, '/help'))
+    const claimOptions = []
+    const original = queue.claimCommand.bind(queue)
+    queue.claimCommand = async (commandId, options) => {
+      claimOptions.push(options)
+      return original(commandId, options)
+    }
+    const worker = createQueueWorker({
+      queue,
+      execute: async () => ({ status: 'ok', output: 'ответ', delivered: true }),
+      getClaimWaitMs: async () => 400,
+    })
+    const result = await worker.runNow()
+    assert.equal(result.ok, true)
+    assert.deepEqual(claimOptions[0], { claimWaitMs: 400 })
+    assert.equal(result.executed.length, 1)
   })
 })
 

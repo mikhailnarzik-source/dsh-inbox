@@ -18,11 +18,16 @@ export async function withTempInbox(body) {
   const previousSync = process.env.DSH_INBOX_SYNC_CONFIG
   const previousRemote = process.env.DSH_INBOX_QUEUE_REMOTE
   const previousQueueDir = process.env.DSH_INBOX_QUEUE_DIR
+  const previousRate = process.env.DSH_INBOX_RATE_LIMIT_MS
+  const previousHour = process.env.DSH_INBOX_RATE_HOUR_LIMIT
   process.env.DSH_INBOX_DIR = dir
   // Never touch the real dsh-sync settings or remote from a test.
   process.env.DSH_INBOX_SYNC_CONFIG = join(dir, 'no-sync-config.json')
   delete process.env.DSH_INBOX_QUEUE_REMOTE
   delete process.env.DSH_INBOX_QUEUE_DIR
+  // Rate limits off by default; the security tests switch them on explicitly.
+  process.env.DSH_INBOX_RATE_LIMIT_MS = '0'
+  process.env.DSH_INBOX_RATE_HOUR_LIMIT = '0'
   try {
     return await body(dir)
   } finally {
@@ -34,6 +39,10 @@ export async function withTempInbox(body) {
     else process.env.DSH_INBOX_QUEUE_REMOTE = previousRemote
     if (previousQueueDir === undefined) delete process.env.DSH_INBOX_QUEUE_DIR
     else process.env.DSH_INBOX_QUEUE_DIR = previousQueueDir
+    if (previousRate === undefined) delete process.env.DSH_INBOX_RATE_LIMIT_MS
+    else process.env.DSH_INBOX_RATE_LIMIT_MS = previousRate
+    if (previousHour === undefined) delete process.env.DSH_INBOX_RATE_HOUR_LIMIT
+    else process.env.DSH_INBOX_RATE_HOUR_LIMIT = previousHour
     await rm(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 120 })
   }
 }
@@ -50,6 +59,7 @@ export function fakeContext(options = {}) {
   const tools = []
   const routes = []
   const effects = []
+  const handlers = new Map()
   const ctx = {
     tools: { register: definition => tools.push(definition) },
     connection: { fetch: { register: route => routes.push(route) } },
@@ -62,6 +72,7 @@ export function fakeContext(options = {}) {
     get: name => {
       if (name === 'sessionController') return options.controller
       if (name === 'sessionQuery') return options.query
+      if (name === 'workspaceRegistry') return options.workspaceRegistry
       return undefined
     },
     effect: callback => {
@@ -69,7 +80,18 @@ export function fakeContext(options = {}) {
       if (typeof dispose === 'function') effects.push(dispose)
       return () => {}
     },
-    on: () => () => {},
+    on: (event, handler) => {
+      const list = handlers.get(event) ?? []
+      list.push(handler)
+      handlers.set(event, list)
+      return () => {
+        const current = handlers.get(event) ?? []
+        handlers.set(event, current.filter(item => item !== handler))
+      }
+    },
+    emit: (event, ...args) => {
+      for (const handler of handlers.get(event) ?? []) handler(...args)
+    },
   }
   ctx.toolsList = tools
   ctx.routesList = routes
@@ -160,6 +182,9 @@ export function telegramMock(options = {}) {
   const myCommands = []
   const edits = []
   const answers = []
+  const profile = []
+  const actions = []
+  const webhook = []
   const mock = installFetch(({ method, body }) => {
     if (method === 'getMe') {
       return options.getMe !== undefined
@@ -181,6 +206,22 @@ export function telegramMock(options = {}) {
         ? options.setMyCommands(body)
         : telegramResponse(true)
     }
+    if (method === 'setMyName' || method === 'setMyDescription' || method === 'setMyShortDescription' || method === 'setChatMenuButton') {
+      profile.push({ method, body })
+      return options[method] !== undefined ? options[method](body) : telegramResponse(true)
+    }
+    if (method === 'sendChatAction') {
+      actions.push(body)
+      return options.sendChatAction !== undefined ? options.sendChatAction(body) : telegramResponse(true)
+    }
+    if (method === 'getWebhookInfo') {
+      webhook.push({ method, body })
+      return options.getWebhookInfo !== undefined ? options.getWebhookInfo(body) : telegramResponse({ url: '' })
+    }
+    if (method === 'deleteWebhook') {
+      webhook.push({ method, body })
+      return options.deleteWebhook !== undefined ? options.deleteWebhook(body) : telegramResponse(true)
+    }
     if (method === 'editMessageText') {
       edits.push(body)
       return options.editMessageText !== undefined
@@ -195,7 +236,7 @@ export function telegramMock(options = {}) {
     }
     return telegramError(404, 'Not Found', 404)
   })
-  return { calls: mock.calls, sent, myCommands, edits, answers, restore: mock.restore }
+  return { calls: mock.calls, sent, myCommands, edits, answers, profile, actions, webhook, restore: mock.restore }
 }
 
 /**

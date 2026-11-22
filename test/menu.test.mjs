@@ -127,6 +127,8 @@ test('callbackFromUpdate: чат, сообщение и data из callback_query
     callbackId: 'cb-1',
     chatId: '555',
     chatTitle: 'Иван',
+    fromId: '555',
+    chatType: 'private',
     messageId: 42,
     data: 'use:s-1',
     from: 'Иван',

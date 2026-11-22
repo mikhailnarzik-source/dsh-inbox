@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.4.1 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.5.0 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.4.1')
+  assert.equal(manifest.version, '0.5.0')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')
@@ -87,6 +87,9 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
     'lib/device.mjs',
     'lib/queue.mjs',
     'lib/queue-worker.mjs',
+    'lib/security.mjs',
+    'lib/answers.mjs',
+    'lib/profile.mjs',
   ]) {
     await exists(relative)
   }
@@ -163,6 +166,9 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(readme, /\/cancel/)
   assert.match(readme, /Меню Telegram/)
   assert.match(readme, /Работа с нескольких устройств/)
+  assert.match(readme, /Ответы из DSH/)
+  assert.match(readme, /Профиль бота/)
+  assert.match(readme, /Безопасность/)
   assert.match(readme, /telegram_listen/)
   assert.match(readme, /telegram_status/)
   const detail = await readFile(join(ROOT, 'docs', 'DETAIL.md'), 'utf8')
@@ -179,8 +185,11 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(detail, /Управление сессиями/)
   assert.match(detail, /Меню Telegram/)
   assert.match(detail, /Работа с нескольких устройств/)
+  assert.match(detail, /Ответы из DSH/)
+  assert.match(detail, /Профиль бота/)
+  assert.match(detail, /Безопасность/)
   assert.match(detail, /telegram_listen/)
-  assert.match(detail, /0\.4\.1/)
+  assert.match(detail, /0\.5\.0/)
   for (const text of [readme, detail]) {
     assert.equal(text.includes('\uFFFD'), false, 'нет битых символов')
   }

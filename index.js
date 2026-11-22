@@ -26,29 +26,52 @@ import {
   readState,
   writeState,
 } from './lib/storage.mjs'
-import { createTelegram, describeTelegramError, redact, TelegramError } from './lib/telegram.mjs'
+import { createTelegram, describeTelegramError, isNotModifiedError, redact, TelegramError } from './lib/telegram.mjs'
 import { createPoller } from './lib/polling.mjs'
 import { createTools } from './lib/tools.mjs'
 import { SessionsError, createSessionsGateway } from './lib/sessions.mjs'
 import { allowChat, createDenyLimiter, denyChat, isChatAllowed } from './lib/access.mjs'
 import { executeCommand, parseIncoming } from './lib/commands.mjs'
-import { MENU_TEXTS, REPLIES, formatAck, helpText, sessionLabel, statusText } from './lib/replies.mjs'
+import { MENU_LABELS, MENU_TEXTS, REPLIES, formatAck, helpText, sessionLabel, statusText } from './lib/replies.mjs'
 import {
   COMMANDS_MENU,
   MENU_BUTTON_ACTIONS,
   MENU_VERSION,
-  helpInlineKeyboard,
+  helpScreenKeyboard,
+  mainMenuKeyboard,
   parseCallbackData,
   replyKeyboard,
+  selectedSessionKeyboard,
   sessionInlineKeyboard,
   sessionsInlineKeyboard,
+  sessionsScreenKeyboard,
+  settingsScreenKeyboard,
   shouldRefreshCommands,
   statusInlineKeyboard,
+  statusScreenKeyboard,
 } from './lib/menu.mjs'
 import { callbackFromUpdate, messageFromUpdate } from './lib/messages.mjs'
 import { botIdFromToken, loadOrCreateDevice } from './lib/device.mjs'
 import { QUEUE_BRANCH, createGitQueue, resolveSyncRemote } from './lib/queue.mjs'
 import { createQueueWorker } from './lib/queue-worker.mjs'
+import {
+  RATE_HOUR_LIMIT,
+  RATE_WINDOW_MS,
+  allowSender,
+  checkSender,
+  createRateLimiter,
+  createUpdateDeduper,
+  denySender,
+} from './lib/security.mjs'
+import { ANSWER_TIMEOUT_MS, THINKING_TEXT, createAnswerTracker } from './lib/answers.mjs'
+import {
+  BOT_DESCRIPTION,
+  BOT_NAME,
+  BOT_SHORT_DESCRIPTION,
+  PROFILE_VERSION,
+  botMenuButton,
+  shouldRefreshProfile,
+} from './lib/profile.mjs'
 
 /** Plugin name; also the id of the bundle row in `cordis.patch.yml`. */
 export const name = 'dsh-inbox'
@@ -103,6 +126,21 @@ const QUEUE_LISTENER_PATH = '/api/dsh-inbox/queue/listener'
 
 /** Route the page calls to sync the shared queue now. */
 const QUEUE_SYNC_PATH = '/api/dsh-inbox/queue/sync'
+
+/** Route the page calls to publish the bot profile (name/description/menu button). */
+const PROFILE_REFRESH_PATH = '/api/dsh-inbox/profile/refresh'
+
+/** Route the page calls to delete a conflicting webhook. */
+const WEBHOOK_DELETE_PATH = '/api/dsh-inbox/webhook/delete'
+
+/** Route the page calls to change local security settings (owner, groups). */
+const SECURITY_PATH = '/api/dsh-inbox/security'
+
+/** How many sessions one `/sessions` page shows. */
+const SESSIONS_PAGE_SIZE = 5
+
+/** Sweep interval for answers that never received a turn end. */
+const ANSWER_SWEEP_MS = 15_000
 
 /**
  * Build one JSON response.
@@ -208,7 +246,18 @@ export function apply(ctx) {
         isListener: () => state.queue?.listener === true,
         intervalMs: Number.isFinite(Number(process.env.DSH_INBOX_QUEUE_INTERVAL_MS)) && process.env.DSH_INBOX_QUEUE_INTERVAL_MS !== ''
           ? Number(process.env.DSH_INBOX_QUEUE_INTERVAL_MS)
-          : 4000,
+          : 1200,
+        getClaimWaitMs: async () => {
+          // One published device means no competitor: shorten the settle window.
+          try {
+            const devices = await queue.statuses()
+            const others = devices.filter(entry => entry.deviceId !== device.id)
+            if (others.length === 0 && state.queue?.listener === true) return 400
+          } catch {
+            // keep the default
+          }
+          return undefined
+        },
         log: message => console.warn(message),
       })
       if (state.deviceId !== device.id) {
@@ -353,6 +402,271 @@ export function apply(ctx) {
   /** Cache of resolved session descriptions. */
   const describeCache = new Map()
 
+  /** Per-chat command rate limiter (tests may disable it through the environment). */
+  const rateLimiter = createRateLimiter({
+    windowMs: Number.isFinite(Number(process.env.DSH_INBOX_RATE_LIMIT_MS))
+      ? Number(process.env.DSH_INBOX_RATE_LIMIT_MS)
+      : RATE_WINDOW_MS,
+    hourLimit: Number.isFinite(Number(process.env.DSH_INBOX_RATE_HOUR_LIMIT))
+      ? Number(process.env.DSH_INBOX_RATE_HOUR_LIMIT)
+      : RATE_HOUR_LIMIT,
+  })
+
+  /** Telegram update ids already handled; a re-read batch must not run twice. */
+  const updateDeduper = createUpdateDeduper()
+
+  /** The chat of the command being executed, for the `beforePrompt` hook. */
+  let activeCommandChat = null
+
+  /** Last session id for which «⏳ Думаю…» was shown in this execution. */
+  let thinkingSessionId = ''
+
+  /** Answers waiting for `turn/end`. */
+  const answers = createAnswerTracker({
+    now: () => Date.now(),
+    timeoutMs: Number.isFinite(Number(process.env.DSH_INBOX_ANSWER_TIMEOUT_MS))
+      ? Number(process.env.DSH_INBOX_ANSWER_TIMEOUT_MS)
+      : ANSWER_TIMEOUT_MS,
+    sendTyping: async chatId => {
+      const token = await resolveToken()
+      if (token === '') return
+      telegram.setToken(token)
+      await telegram.sendChatAction({ chatId })
+    },
+    sendMessage: async ({ chatId, text }) => {
+      const token = await resolveToken()
+      if (token === '') throw new TelegramError('Токен Telegram не сохранён.', { code: 'no-token' })
+      telegram.setToken(token)
+      const result = await telegram.sendMessage({ chatId, text })
+      return { messageId: result?.message_id }
+    },
+    editMessage: async ({ chatId, messageId, text }) => {
+      const token = await resolveToken()
+      if (token === '') throw new TelegramError('Токен Telegram не сохранён.', { code: 'no-token' })
+      telegram.setToken(token)
+      await telegram.editMessageText({ chatId, messageId, text })
+    },
+    recordOutgoing: async ({ chatId, chatTitle, text }) => {
+      const appended = addMessage(state, {
+        chatId,
+        chatTitle: chatTitle === '' ? chatId : chatTitle,
+        from: 'DSH',
+        text,
+        at: new Date().toISOString(),
+        direction: 'out',
+      })
+      update({ messages: appended.messages })
+      await persist()
+    },
+  })
+
+  /** The working directory of the project the bot should list sessions for. */
+  async function projectCwd() {
+    try {
+      const registry = service('workspaceRegistry')
+      const workspaces = registry?.list?.() ?? []
+      const first = workspaces.find?.(item => typeof item?.path === 'string' && item.path !== '')
+      if (first !== undefined) return first.path
+    } catch {
+      // fall through to the current session/project directory
+    }
+    const chat = lastChat(state)
+    const current = chat === undefined ? '' : (state.currentChatSession?.[chat.chatId] ?? '')
+    if (current !== '') {
+      try {
+        const described = await sessions.describe(current)
+        if (typeof described?.cwd === 'string' && described.cwd !== '') return described.cwd
+      } catch {
+        // ignore
+      }
+    }
+    return process.cwd()
+  }
+
+  /** Normalise a path for comparisons (Windows is case-insensitive). */
+  function samePath(left, right) {
+    const a = String(left ?? '').replace(/[\\/]+$/, '').toLowerCase()
+    const b = String(right ?? '').replace(/[\\/]+$/, '').toLowerCase()
+    return a === b
+  }
+
+  /**
+   * Build one page of the sessions screen: project filtering, page size and the
+   * remembered index list for `use:<index>`.
+   * @param request - `{ all?, page?, chatId }`.
+   * @returns `{ text, keyboard, count, page, pages, rows }`.
+   */
+  async function sessionsScreen({ all = false, page = 1, chatId } = {}) {
+    let rows = []
+    try {
+      rows = await sessions.list({ limit: 200 })
+    } catch (error) {
+      rows = []
+      throw error
+    }
+    if (!all) {
+      const cwd = await projectCwd()
+      rows = rows.filter(row => row.blank !== true && row.cwd !== '' && samePath(row.cwd, cwd))
+    }
+    const pages = Math.max(1, Math.ceil(rows.length / SESSIONS_PAGE_SIZE))
+    const current = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pages)
+    const pageRows = rows.slice((current - 1) * SESSIONS_PAGE_SIZE, current * SESSIONS_PAGE_SIZE)
+    if (chatId !== undefined) {
+      await commandPersist({
+        pendingLists: {
+          ...state.pendingLists,
+          [String(chatId)]: pageRows.map(row => row.sessionId),
+        },
+      })
+    }
+    const lines = pageRows.map((row, index) =>
+      `${index + 1}. ${row.title === '' ? row.sessionId.slice(0, 8) : row.title} — ${row.running ? 'выполняется' : 'ожидает'}`,
+    )
+    const text = rows.length === 0
+      ? MENU_TEXTS.sessionsEmpty
+      : `${MENU_TEXTS.sessionsHeader({ all, page: current, pages, count: rows.length })}\n${lines.join('\n')}`
+    return {
+      text,
+      keyboard: sessionsScreenKeyboardWithRows(pageRows, { page: current, pages, all }),
+      count: rows.length,
+      page: current,
+      pages,
+      rows: pageRows,
+    }
+  }
+
+  /** Screen keyboard with the session rows in front of the navigation row. */
+  function sessionsScreenKeyboardWithRows(rows, options) {
+    const nav = sessionsScreenKeyboard(options)
+    const sessionsRows = rows.map((row, index) => [{
+      text: `${index + 1}. ${row.title === '' ? row.sessionId.slice(0, 8) : row.title} — ${row.running ? 'выполняется' : 'ожидает'}`,
+      callback_data: `use:${index + 1}`,
+    }])
+    return { inline_keyboard: [...sessionsRows, ...nav.inline_keyboard] }
+  }
+
+  /** Persist a state patch (helper for the screen builders). */
+  async function commandPersist(patch) {
+    update(patch)
+    await persist()
+  }
+
+  /** The `/settings` screen content. */
+  async function settingsScreen() {
+    const info = await tokenInfo()
+    const cwd = await projectCwd()
+    const lines = [
+      MENU_TEXTS.settingsTitle,
+      `Бот: ${info.configured ? (state.botUsername === '' ? 'токен сохранён, имя не проверено' : `@${state.botUsername}`) : 'токен не сохранён'}`,
+      `Владелец: ${state.ownerUserId === '' ? 'не назначен' : `${state.ownerUserId}${state.ownerChatId === '' ? '' : ` (чат ${state.ownerChatId})`}`}`,
+      `Группы: ${state.security?.groupsEnabled === true ? 'разрешены' : 'запрещены'}`,
+      `Белый список: ${state.allowedUserIds.length === 0 ? 'пуст — управлять нельзя никому' : `${state.allowedUserIds.length} польз.`}`,
+      `Проект: ${cwd}`,
+      `Очередь: ${queue !== null && queue.configured() ? (state.queue?.listener === true ? 'настроена, это устройство слушает Telegram' : 'настроена, это исполнитель') : 'inline, без remote'}`,
+      '',
+      'Изменить белый список, владельца и разрешение групп можно на странице плагина «Входящие».',
+    ]
+    return { text: lines.join('\n'), keyboard: settingsScreenKeyboard() }
+  }
+
+  /**
+   * Select a session by the id from a deep link.
+   * @param sessionId - id from `/start <id>`.
+   * @returns `{ text, keyboard }`.
+   */
+  async function selectSessionById(sessionId) {
+    const id = String(sessionId ?? '').trim()
+    if (id === '') throw new Error('Укажите идентификатор сессии: /start <sessionId>.')
+    let rows = []
+    try {
+      rows = await sessions.list({ limit: 200 })
+    } catch {
+      rows = []
+    }
+    const row = rows.find(item => item.sessionId === id)
+    if (row === undefined) {
+      throw new Error('Сессия не найдена: возможно, её удалили или она ещё не загружена.')
+    }
+    const targetChat = activeCommandChat?.chatId ?? lastChat(state)?.chatId ?? ''
+    update({ currentChatSession: { ...state.currentChatSession, [targetChat]: id } })
+    await persist()
+    const label = sessionLabel(row.title, id)
+    return { text: MENU_TEXTS.sessionChosen(label), keyboard: selectedSessionKeyboard() }
+  }
+
+  /**
+   * Publish the bot profile (name, descriptions, chat menu button) with a daily
+   * cache. Failures are reported, never thrown into polling.
+   * @param force - ignore the cache.
+   * @returns `{ ok, cached, message }`.
+   */
+  async function refreshBotProfile(force = false) {
+    const token = await resolveToken()
+    if (token === '') return { ok: false, code: 'missing', cached: false, message: 'Токен Telegram не сохранён.' }
+    const now = Date.now()
+    if (!force && !shouldRefreshProfile(state.botProfile, now, PROFILE_VERSION)) {
+      return { ok: true, cached: true, message: 'Профиль бота уже опубликован.' }
+    }
+    telegram.setToken(token)
+    try {
+      await telegram.setMyName(BOT_NAME)
+      await telegram.setMyDescription(BOT_DESCRIPTION)
+      await telegram.setMyShortDescription(BOT_SHORT_DESCRIPTION)
+      await telegram.setChatMenuButton(botMenuButton())
+      update({
+        botProfile: {
+          name: BOT_NAME,
+          description: BOT_DESCRIPTION,
+          shortDescription: BOT_SHORT_DESCRIPTION,
+          at: now,
+          version: PROFILE_VERSION,
+          ok: true,
+        },
+      })
+      await persist()
+      return { ok: true, cached: false, message: 'Профиль бота обновлён.' }
+    } catch (error) {
+      update({
+        botProfile: {
+          ...state.botProfile,
+          at: now,
+          version: PROFILE_VERSION,
+          ok: false,
+        },
+      })
+      await persist()
+      const message = redact(describeTelegramError(error, token), token)
+      console.warn('[dsh-inbox] не удалось обновить профиль бота:', message)
+      return { ok: false, code: 'failed', cached: false, message }
+    }
+  }
+
+  /**
+   * Explain a 409 Conflict: read the webhook and ask the person to remove it.
+   * @returns the instruction text.
+   */
+  async function explainConflict() {
+    const token = await resolveToken()
+    let url = ''
+    if (token !== '') {
+      telegram.setToken(token)
+      try {
+        const info = await telegram.getWebhookInfo()
+        url = typeof info?.url === 'string' ? info.url : ''
+      } catch {
+        url = ''
+      }
+    }
+    update({ webhook: { url, checkedAt: Date.now() } })
+    await persist()
+    const message = url === ''
+      ? 'Конфликт 409: этого бота опрашивает другая программа. Остановите её и включите приём снова.'
+      : `Конфликт 409: у бота включён webhook (${url}). Нажмите «Снять webhook» на странице плагина, чтобы вернуться к long polling.`
+    update({ lastError: message })
+    await persist()
+    return message
+  }
+
   /**
    * Whether a token is configured and whether the store accepts writes — never
    * the value itself.
@@ -428,8 +742,9 @@ export function apply(ctx) {
       const username = typeof me?.username === 'string' ? me.username.trim() : ''
       update({ botUsername: username })
       await persist()
-      // A working token is the natural moment to publish the «/» menu.
+      // A working token is the natural moment to publish the «/» menu and profile.
       await refreshCommands()
+      await refreshBotProfile()
       return {
         ok: true,
         code: 'accepted',
@@ -619,10 +934,14 @@ export function apply(ctx) {
       const message = state.messages[index]
       if (seen.has(message.chatId)) continue
       seen.add(message.chatId)
+      const userId = typeof message.fromId === 'string' ? message.fromId : message.chatId
+      const verdict = checkSender(state, { chatId: message.chatId, fromId: userId, chatType: message.chatType })
       chats.push({
         chatId: message.chatId,
         chatTitle: message.chatTitle,
-        allowed: isChatAllowed(state, message.chatId),
+        userId,
+        chatType: message.chatType ?? 'private',
+        allowed: verdict.allowed === true,
         blocked: message.blocked === true,
         sessionId: state.currentChatSession?.[message.chatId] ?? '',
         sessionTitle: '',
@@ -634,16 +953,21 @@ export function apply(ctx) {
     return chats
   }
 
-  /** Add one chat to the allow-list and persist it. */
+  /** Add one Telegram user to the allow-list and persist it. */
   async function addAllowedChat(chatId) {
     const id = normalizeChatId(chatId)
-    if (id === '') throw new Error('Неверный chatId: нужен числовой идентификатор чата Telegram.')
-    const result = allowChat(state, id)
+    if (id === '') throw new Error('Неверный chatId: нужен числовой идентификатор пользователя Telegram.')
+    const result = allowSender(state, { chatId: id, fromId: id })
     if (result.changed) {
-      update({ allowedChatIds: result.state.allowedChatIds })
+      update({
+        allowedUserIds: result.state.allowedUserIds,
+        allowedChatIds: result.state.allowedChatIds,
+        ownerUserId: result.state.ownerUserId,
+        ownerChatId: result.state.ownerChatId,
+      })
       await persist()
     }
-    return { changed: result.changed, allowedChatIds: state.allowedChatIds }
+    return { changed: result.changed, allowedChatIds: state.allowedChatIds, allowedUserIds: state.allowedUserIds }
   }
 
   /**
@@ -658,12 +982,24 @@ export function apply(ctx) {
     sessions,
     statusInfo: () => ({ polling: poller.running, lastError: state.lastError ?? '' }),
     maxSessions: MAX_LISTED_SESSIONS,
+    sessionsScreen,
+    settingsScreen,
+    selectSessionById,
+    beforePrompt: async sessionId => {
+      thinkingSessionId = String(sessionId ?? '')
+      if (thinkingSessionId === '' || activeCommandChat === null) return
+      await answers.begin({
+        sessionId: thinkingSessionId,
+        chatId: activeCommandChat.chatId,
+        chatTitle: activeCommandChat.chatTitle,
+      })
+    },
   }
 
   /**
    * Build the reply of one message command without sending it.
    * @param record - `{ chatId, chatTitle, text }`.
-   * @returns `{ status: 'ok'|'error', text, markup? }`.
+   * @returns `{ status, text, markup?, skipAck? }`.
    */
   async function buildCommandReply(record) {
     const pressed = MENU_BUTTON_ACTIONS[record.text.trim()]
@@ -675,6 +1011,8 @@ export function apply(ctx) {
       text = `/${pressed.command}`
     }
     const parsed = parseIncoming(text)
+    activeCommandChat = { chatId: record.chatId, chatTitle: record.chatTitle }
+    thinkingSessionId = ''
     try {
       const result = await executeCommand({
         command: parsed.command,
@@ -682,6 +1020,10 @@ export function apply(ctx) {
         chatId: record.chatId,
         deps: commandDeps,
       })
+      if (result.thinking === true) {
+        // The «⏳ Думаю…» message becomes the answer on turn/end; no extra ack.
+        return { status: 'ok', skipAck: true, text: '' }
+      }
       return {
         status: 'ok',
         text: formatAck(true, result.summary, result.details),
@@ -689,15 +1031,20 @@ export function apply(ctx) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return {
-        status: 'error',
-        text: formatAck(false, typeof message === 'string' && message !== '' ? message : 'неизвестная ошибка'),
+      const clean = typeof message === 'string' && message !== '' ? message : 'неизвестная ошибка'
+      if (thinkingSessionId !== '') {
+        await answers.fail(thinkingSessionId, clean)
+        return { status: 'error', skipAck: true, text: '' }
       }
+      return { status: 'error', text: formatAck(false, clean) }
+    } finally {
+      activeCommandChat = null
     }
   }
 
   /** Send one command reply and remember it in the local history. */
   async function deliverReply(record, reply) {
+    if (reply.skipAck === true) return { ok: true, skipped: true }
     try {
       await sendTelegram(record.chatId, reply.text, {
         chatTitle: record.chatTitle,
@@ -728,6 +1075,16 @@ export function apply(ctx) {
    * @returns `{ status, output, text?, markup?, chatId?, chatTitle?, delivered? }`.
    */
   async function executeQueuedCommand(command) {
+    // Defence in depth: a command file from git is re-checked against the local
+    // allow-list before it runs.
+    const verdict = checkSender(state, {
+      chatId: command.chatId,
+      fromId: command.fromId,
+      chatType: command.chatType,
+    })
+    if (verdict.allowed !== true) {
+      return { status: 'error', output: 'отклонено проверкой отправителя на исполнителе', delivered: true }
+    }
     if (command.callback !== undefined) {
       // A callback needs its own answer and message edit, so the executor sends
       // those itself and reports the command as delivered.
@@ -737,7 +1094,9 @@ export function apply(ctx) {
         chatTitle: command.chatTitle,
         messageId: command.callback.messageId,
         data: command.callback.data,
-        from: '',
+        from: command.fromName ?? '',
+        fromId: command.fromId,
+        chatType: command.chatType,
       })
       return {
         status: 'ok',
@@ -745,8 +1104,15 @@ export function apply(ctx) {
         delivered: true,
       }
     }
-    const record = { chatId: command.chatId, chatTitle: command.chatTitle, text: command.text }
+    const record = {
+      chatId: command.chatId,
+      chatTitle: command.chatTitle,
+      text: command.text,
+      fromId: command.fromId,
+      chatType: command.chatType,
+    }
     const reply = await buildCommandReply(record)
+    if (reply.skipAck === true) return { status: reply.status, output: '', delivered: true }
     return {
       ...reply,
       output: reply.text.slice(0, 500),
@@ -789,17 +1155,23 @@ export function apply(ctx) {
    */
   async function editCallbackMessage(callback, text, markup) {
     const chatTitle = callback.chatTitle === '' ? callback.chatId : callback.chatTitle
-    if (callback.messageId !== undefined) {
-      try {
-        await telegram.editMessageText({
-          chatId: callback.chatId,
-          messageId: callback.messageId,
-          text,
-          replyMarkup: markup,
-        })
-        return
-      } catch {
-        // fall back to a fresh message
+    const token = await resolveToken()
+    if (token !== '') {
+      telegram.setToken(token)
+      if (callback.messageId !== undefined) {
+        try {
+          await telegram.editMessageText({
+            chatId: callback.chatId,
+            messageId: callback.messageId,
+            text,
+            replyMarkup: markup,
+          })
+          return
+        } catch (error) {
+          // The wanted text is already there; sending a duplicate would be wrong.
+          if (isNotModifiedError(error)) return
+          // fall back to a fresh message
+        }
       }
     }
     await sendTelegram(callback.chatId, text, { chatTitle, replyMarkup: markup })
@@ -815,25 +1187,53 @@ export function apply(ctx) {
   async function runCallbackAction(parsed, callback, ack) {
     const chatId = callback.chatId
     const chatTitle = callback.chatTitle === '' ? callback.chatId : callback.chatTitle
-    if (parsed.action === 'use') {
-      const sessionId = typeof parsed.sessionId === 'string' ? parsed.sessionId : ''
-      if (sessionId === '') {
+    /** Show one sessions page; the list is also remembered for `use:<index>`. */
+    const showSessions = async (all, page) => {
+      let screen
+      try {
+        screen = await sessionsScreen({ all, page, chatId })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : MENU_TEXTS.refreshFailed
+        await ack(MENU_TEXTS.refreshFailed)
+        await editCallbackMessage(callback, formatAck(false, message), mainMenuKeyboard())
+        return
+      }
+      await ack(screen.count === 0 ? MENU_TEXTS.sessionsEmpty : `Страница ${screen.page}/${screen.pages}`)
+      await editCallbackMessage(callback, screen.text, screen.keyboard)
+    }
+    /** Select a session by id and show the selected screen. */
+    const chooseSession = async sessionId => {
+      if (String(sessionId ?? '') === '') {
         await ack(MENU_TEXTS.sessionNotChosenForCallback)
         return
       }
-      update({ currentChatSession: { ...state.currentChatSession, [chatId]: sessionId } })
+      update({ currentChatSession: { ...state.currentChatSession, [chatId]: String(sessionId) } })
       await persist()
       const label = sessionLabel(await cachedTitle(sessionId), sessionId)
       await ack('Сессия выбрана')
-      await editCallbackMessage(
-        callback,
-        formatAck(true, 'сессия выбрана', MENU_TEXTS.sessionChosen(label)),
-        sessionInlineKeyboard(sessionId),
-      )
+      await editCallbackMessage(callback, `${MENU_TEXTS.sessionChosen(label)}\n\n${MENU_TEXTS.hintAsk}`, selectedSessionKeyboard())
+    }
+    if (parsed.action === 'use') {
+      let sessionId = typeof parsed.sessionId === 'string' ? parsed.sessionId : ''
+      if (Number.isFinite(parsed.index)) {
+        const list = state.pendingLists?.[chatId] ?? []
+        sessionId = list[parsed.index - 1] ?? ''
+        if (sessionId === '') {
+          await ack(MENU_TEXTS.sessionNotChosenForCallback)
+          return
+        }
+      }
+      await chooseSession(sessionId)
       return
     }
-    if (parsed.action === 'cancel') {
-      const sessionId = typeof parsed.sessionId === 'string' && parsed.sessionId !== ''
+    if (parsed.action === 'sessions' || parsed.action === 'sessions-all' || parsed.action === 'refresh' || parsed.action === 'refresh-all' || parsed.action === 'sessions-refresh') {
+      const all = parsed.action === 'sessions-all' || parsed.action === 'refresh-all'
+      const page = Number.isFinite(parsed.page) ? parsed.page : 1
+      await showSessions(all, page)
+      return
+    }
+    if (parsed.action === 'stop' || parsed.action === 'cancel') {
+      const sessionId = parsed.action === 'cancel' && typeof parsed.sessionId === 'string' && parsed.sessionId !== ''
         ? parsed.sessionId
         : (state.currentChatSession?.[chatId] ?? '')
       if (sessionId === '') {
@@ -845,43 +1245,12 @@ export function apply(ctx) {
       } catch (error) {
         const message = error instanceof Error ? error.message : MENU_TEXTS.cancelFailed
         await ack(MENU_TEXTS.cancelFailed)
-        await editCallbackMessage(callback, formatAck(false, message), statusInlineKeyboard(sessionId))
+        await editCallbackMessage(callback, formatAck(false, message), statusScreenKeyboard())
         return
       }
       const label = sessionLabel(await cachedTitle(sessionId), sessionId)
       await ack('Отмена запрошена')
-      await editCallbackMessage(
-        callback,
-        formatAck(true, MENU_TEXTS.cancelRequested(label)),
-        statusInlineKeyboard(sessionId),
-      )
-      return
-    }
-    if (parsed.action === 'sessions-refresh') {
-      let rows = []
-      try {
-        rows = await sessions.list({ limit: MAX_LISTED_SESSIONS })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : MENU_TEXTS.refreshFailed
-        await ack(MENU_TEXTS.refreshFailed)
-        await editCallbackMessage(callback, formatAck(false, message), sessionsInlineKeyboard([]))
-        return
-      }
-      if (rows.length === 0) {
-        await ack('Сессий нет')
-        await editCallbackMessage(callback, formatAck(false, REPLIES.emptySessions), sessionsInlineKeyboard([]))
-        return
-      }
-      update({
-        pendingLists: { ...state.pendingLists, [chatId]: rows.map(row => row.sessionId) },
-      })
-      await persist()
-      await ack('Список обновлён')
-      await editCallbackMessage(
-        callback,
-        formatAck(true, `сессий: ${rows.length}`, MENU_TEXTS.chooseSession),
-        sessionsInlineKeyboard(rows),
-      )
+      await editCallbackMessage(callback, MENU_TEXTS.stopCancelled(label), statusScreenKeyboard())
       return
     }
     if (parsed.action === 'status') {
@@ -893,28 +1262,42 @@ export function apply(ctx) {
           polling: poller.running,
           lastError: state.lastError ?? '',
           totalMessages: state.messages.length,
-          allowedCount: state.allowedChatIds.length,
+          allowedCount: state.allowedUserIds.length,
           current,
           sessionsAvailable: sessions.available(),
         }),
-        statusInlineKeyboard(current?.sessionId ?? ''),
+        statusScreenKeyboard(),
       )
+      return
+    }
+    if (parsed.action === 'settings') {
+      const screen = await settingsScreen()
+      await ack('Настройки')
+      await editCallbackMessage(callback, screen.text, screen.keyboard)
       return
     }
     if (parsed.action === 'help') {
       await ack('Помощь')
-      await editCallbackMessage(callback, helpText(), helpInlineKeyboard())
+      await editCallbackMessage(callback, helpText(), helpScreenKeyboard())
       return
     }
     if (parsed.action === 'menu') {
       await ack(MENU_TEXTS.menuSent)
-      await editCallbackMessage(callback, MENU_TEXTS.menuSent)
-      await say(chatId, chatTitle, MENU_TEXTS.greeting, replyKeyboard())
+      await editCallbackMessage(callback, MENU_TEXTS.greeting, mainMenuKeyboard())
       return
     }
-    if (parsed.action === 'ask') {
-      await ack(MENU_TEXTS.hintAsk)
-      await say(chatId, chatTitle, MENU_TEXTS.hintAsk, replyKeyboard())
+    if (parsed.action === 'ask-hint' || parsed.action === 'ask') {
+      await ack(MENU_TEXTS.askHintSent)
+      await editCallbackMessage(callback, `${MENU_TEXTS.askHintSent}\n${MENU_TEXTS.hintAsk}`, mainMenuKeyboard())
+      return
+    }
+    if (parsed.action === 'new-hint') {
+      await ack(MENU_TEXTS.hintNew)
+      await say(chatId, chatTitle, MENU_TEXTS.hintNew)
+      return
+    }
+    if (parsed.action === 'noop') {
+      await ack('Обновите список кнопкой «🔄 Обновить»')
       return
     }
     await ack(MENU_TEXTS.unknownButton)
@@ -950,15 +1333,17 @@ export function apply(ctx) {
         await ack('Не удалось определить чат.')
         return
       }
-      if (!isChatAllowed(state, callback.chatId)) {
+      const verdict = checkSender(state, callback)
+      if (verdict.allowed !== true) {
+        const text = verdict.reason === 'group' ? MENU_TEXTS.groupsDenied : MENU_TEXTS.callbackDenied
         if (denyLimiter.shouldNotify(callback.chatId)) {
           try {
-            await sendTelegram(callback.chatId, REPLIES.denied, { record: false })
+            await sendTelegram(callback.chatId, text, { record: false })
           } catch {
             // the denial is best effort
           }
         }
-        await ack(MENU_TEXTS.callbackDenied)
+        await ack(text)
         return
       }
       await runCallbackAction(parseCallbackData(callback.data), callback, ack)
@@ -990,87 +1375,127 @@ export function apply(ctx) {
     }
   }
 
-  /** Denial notice for a chat outside the allow-list, rate-limited per chat. */
-  async function denyForeign(record) {
-    if (!denyLimiter.shouldNotify(record.chatId)) return
+  /** Denial notice for an unknown sender or a forbidden group, at most one per 5 min. */
+  async function denyForeign(target, reason) {
+    if (!denyLimiter.shouldNotify(target.chatId)) return
+    const text = reason === 'group' ? MENU_TEXTS.groupsDenied : MENU_TEXTS.notListed
     try {
-      await sendTelegram(record.chatId, REPLIES.denied, { record: false })
+      await sendTelegram(target.chatId, text, { record: false })
+    } catch (error) {
+      update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
+    }
+  }
+
+  /** Text of a rate-limit notice. */
+  function rateNoticeText(rate) {
+    if (rate.reason === 'hour') return MENU_TEXTS.hourLimited
+    const seconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? RATE_WINDOW_MS) / 1000))
+    return MENU_TEXTS.rateLimited(seconds)
+  }
+
+  /** Rate-limit notice, at most once per 5 minutes per chat. */
+  const rateNoticeLimiter = createDenyLimiter()
+  async function rateNotice(record, rate) {
+    if (!rateNoticeLimiter.shouldNotify(record.chatId)) return
+    try {
+      await sendTelegram(record.chatId, rateNoticeText(rate))
     } catch (error) {
       update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
     }
   }
 
   /**
-   * Handle one long-poll batch. Without a configured shared queue the commands
-   * run inline (single-device mode). With a queue every allowed update becomes an
-   * immutable command file; the worker executes it on whichever device wins the
-   * claim, and the offset advances only after the batch was pushed.
+   * Handle one long-poll batch. Every callback is answered immediately (before
+   * any slow work); senders are checked by user id and chat type; commands are
+   * rate-limited and deduplicated. Without a configured shared queue commands run
+   * inline, with a queue they become immutable command files for the worker.
    * @param batch - `{ updates, offset, signal }` from the poller.
    */
   async function handleBatch({ updates, offset }) {
     const queueActive = queue !== null && queue.configured()
     const incoming = []
+    const executable = []
     const commands = []
     const callbacks = []
     for (const update of updates) {
+      if (updateDeduper.seen(update.update_id)) continue
       const callback = callbackFromUpdate(update)
       if (callback !== undefined) {
-        if (!queueActive) {
-          callbacks.push(callback)
-          continue
-        }
-        if (callback.chatId === '') {
-          await answerCallbackQuick(callback, 'Не удалось определить чат.')
-          continue
-        }
-        if (!isChatAllowed(state, callback.chatId)) {
-          await answerCallbackQuick(callback, MENU_TEXTS.callbackDenied)
-          await denyForeign(callback)
-          continue
-        }
-        // Stop the spinner now; the executor edits the message later.
-        await answerCallbackQuick(callback, '')
-        commands.push({
-          chatId: callback.chatId,
-          chatTitle: callback.chatTitle,
-          updateId: Number(update.update_id),
-          callback: {
-            callbackId: callback.callbackId,
-            data: callback.data,
-            messageId: callback.messageId,
-          },
-        })
+        callbacks.push(callback)
         continue
       }
       const record = messageFromUpdate(update)
       if (record === undefined) continue
-      if (!isChatAllowed(state, record.chatId)) {
-        // Stored so the page can show the chat and offer "Разрешить этот чат".
+      const verdict = checkSender(state, record)
+      if (verdict.allowed !== true) {
+        // Stored so the page can show the chat and offer "Разрешить".
         incoming.push({ ...record, blocked: true })
-        await denyForeign(record)
+        await denyForeign(record, verdict.reason)
         continue
       }
       incoming.push(record)
+      const rate = rateLimiter.check(record.chatId)
+      if (!rate.ok) {
+        await rateNotice(record, rate)
+        continue
+      }
+      executable.push(record)
       if (queueActive) {
         commands.push({
           chatId: record.chatId,
           chatTitle: record.chatTitle,
           updateId: Number(update.update_id),
           text: record.text,
+          fromId: record.fromId,
+          chatType: record.chatType,
+          fromName: record.from,
         })
+      }
+    }
+    // Callbacks first: a pressed button must never wait for a slow command batch.
+    for (const callback of callbacks) {
+      if (callback.chatId === '') {
+        await answerCallbackQuick(callback, 'Не удалось определить чат.')
+        continue
+      }
+      const verdict = checkSender(state, callback)
+      if (verdict.allowed !== true) {
+        await answerCallbackQuick(callback, verdict.reason === 'group' ? MENU_TEXTS.groupsDenied : MENU_TEXTS.callbackDenied)
+        await denyForeign(callback, verdict.reason)
+        continue
+      }
+      const rate = rateLimiter.check(callback.chatId)
+      if (!rate.ok) {
+        await answerCallbackQuick(callback, rateNoticeText(rate))
+        continue
+      }
+      if (queueActive) {
+        // Stop the spinner now; the executor edits the message later.
+        await answerCallbackQuick(callback, '')
+        commands.push({
+          chatId: callback.chatId,
+          chatTitle: callback.chatTitle,
+          updateId: Number(update.update_id),
+          fromId: callback.fromId,
+          chatType: callback.chatType,
+          fromName: callback.from,
+          callback: {
+            callbackId: callback.callbackId,
+            data: callback.data,
+            messageId: callback.messageId,
+          },
+        })
+      } else {
+        await handleCallback(callback)
       }
     }
     if (!queueActive) {
       const appended = addMessages({ ...state, messages: state.messages }, incoming)
       update({ offset, messages: appended.messages, lastError: '' })
       await persist()
-      for (const record of incoming) {
-        if (record.blocked === true) continue
+      for (const record of executable) {
         if (record.text.trim() === '') continue
         await processIncoming(record)
-      }
-      for (const callback of callbacks) {
-        await handleCallback(callback)
       }
       return
     }
@@ -1094,6 +1519,9 @@ export function apply(ctx) {
     update: (patch, options) => update(patch, options),
     getTelegram: () => telegram,
     handleBatch,
+    onConflict: async () => {
+      await explainConflict()
+    },
   })
 
   /**
@@ -1147,6 +1575,7 @@ export function apply(ctx) {
       await adoptQueueOffset()
       poller.start()
       await refreshCommands()
+      void refreshBotProfile()
       worker?.start()
       await pushDeviceStatus()
       return { ok: true, listener: true, enabled: true, message: 'Это устройство слушает Telegram.' }
@@ -1200,6 +1629,21 @@ export function apply(ctx) {
             maxMessages: MAX_MESSAGES,
             lastChat: chat === undefined ? null : chat,
             allowedChatIds: state.allowedChatIds,
+            allowedUserIds: state.allowedUserIds,
+            owner: { userId: state.ownerUserId, chatId: state.ownerChatId },
+            security: { groupsEnabled: state.security?.groupsEnabled === true },
+            botProfile: {
+              name: state.botProfile?.name ?? '',
+              description: state.botProfile?.description ?? '',
+              shortDescription: state.botProfile?.shortDescription ?? '',
+              at: Number(state.botProfile?.at) || 0,
+              version: state.botProfile?.version ?? '',
+              ok: state.botProfile?.ok === true && state.botProfile?.version === PROFILE_VERSION,
+              commands: COMMANDS_MENU.map(item => `/${item.command}`),
+            },
+            webhook: state.webhook ?? { url: '', checkedAt: 0 },
+            answersPending: answers.size(),
+            project: await projectCwd().catch(() => process.cwd()),
             currentSession,
             chats,
             device: { id: device.id, name: device.name },
@@ -1288,10 +1732,11 @@ export function apply(ctx) {
         fetch: async request => {
           await ready
           const body = await readBody(request)
-          if (Array.isArray(body.chatIds)) {
+          const list = Array.isArray(body.userIds) ? body.userIds : (Array.isArray(body.chatIds) ? body.chatIds : undefined)
+          if (Array.isArray(list)) {
             const invalid = []
             const valid = []
-            for (const item of body.chatIds) {
+            for (const item of list) {
               const id = normalizeChatId(item)
               if (id === '') invalid.push(String(item))
               else if (!valid.includes(id)) valid.push(id)
@@ -1299,18 +1744,25 @@ export function apply(ctx) {
             if (invalid.length > 0) {
               return json({
                 ok: false,
-                message: `Неверные chatId: ${invalid.join(', ')}. Нужны числа, например 123456789 или -1001234567890.`,
+                message: `Неверные id: ${invalid.join(', ')}. Нужны числа — Telegram user id из личного чата.`,
               })
             }
-            const allowedChatIds = normalizeChatIds(valid)
-            update({ allowedChatIds })
+            const allowedUserIds = normalizeChatIds(valid)
+            const next = { allowedUserIds, allowedChatIds: [...allowedUserIds] }
+            if (!state.ownerUserId && allowedUserIds.length > 0) {
+              next.ownerUserId = allowedUserIds[0]
+              next.ownerChatId = allowedUserIds[0]
+            }
+            update(next)
             await persist()
             return json({
               ok: true,
-              allowedChatIds,
-              message: allowedChatIds.length === 0
+              allowedUserIds,
+              allowedChatIds: state.allowedChatIds,
+              owner: { userId: state.ownerUserId, chatId: state.ownerChatId },
+              message: allowedUserIds.length === 0
                 ? 'Белый список пуст: управлять DSH из Telegram нельзя никому.'
-                : `Чатов в белом списке: ${allowedChatIds.length}.`,
+                : `Пользователей в белом списке: ${allowedUserIds.length}.`,
             })
           }
           if (typeof body.add === 'string') {
@@ -1318,31 +1770,38 @@ export function apply(ctx) {
               const result = await addAllowedChat(body.add)
               return json({
                 ok: true,
+                allowedUserIds: result.allowedUserIds,
                 allowedChatIds: result.allowedChatIds,
+                owner: { userId: state.ownerUserId, chatId: state.ownerChatId },
                 message: result.changed
-                  ? `Чат ${normalizeChatId(body.add)} добавлен в белый список.`
-                  : 'Чат уже был в белом списке.',
+                  ? `Пользователь ${normalizeChatId(body.add)} добавлен в белый список.`
+                  : 'Пользователь уже был в белом списке.',
               })
             } catch (error) {
               return json({ ok: false, message: error instanceof Error ? error.message : String(error) })
             }
           }
           if (typeof body.remove === 'string') {
-            const removed = denyChat(state, body.remove)
+            const removed = denySender(state, body.remove)
             const changed = removed.changed
             update({
+              allowedUserIds: removed.state.allowedUserIds,
               allowedChatIds: removed.state.allowedChatIds,
-              currentChatSession: removed.state.currentChatSession,
-              pendingLists: removed.state.pendingLists,
+              ownerUserId: removed.state.ownerUserId,
+              ownerChatId: removed.state.ownerChatId,
             })
             await persist()
             return json({
               ok: true,
+              allowedUserIds: state.allowedUserIds,
               allowedChatIds: state.allowedChatIds,
-              message: changed ? 'Чат удалён из белого списка.' : 'Этого чата не было в белом списке.',
+              owner: { userId: state.ownerUserId, chatId: state.ownerChatId },
+              message: changed
+                ? 'Пользователь удалён из белого списка.'
+                : 'Этого пользователя не было в списке (владельца удалить нельзя).',
             })
           }
-          return json({ ok: false, message: 'Укажите chatIds, add или remove.' })
+          return json({ ok: false, message: 'Укажите userIds, add или remove.' })
         },
       })
 
@@ -1407,6 +1866,85 @@ export function apply(ctx) {
           })
         },
       })
+      ctx.connection.fetch.register({
+        path: PROFILE_REFRESH_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async request => {
+          await ready
+          const body = await readBody(request)
+          const result = await refreshBotProfile(body.force !== false)
+          return json({ ok: result.ok === true, ...result })
+        },
+      })
+
+      ctx.connection.fetch.register({
+        path: WEBHOOK_DELETE_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async () => {
+          await ready
+          const token = await resolveToken()
+          if (token === '') return json({ ok: false, message: 'Токен Telegram не сохранён.' })
+          telegram.setToken(token)
+          try {
+            await telegram.deleteWebhook()
+          } catch (error) {
+            return json({ ok: false, message: redact(describeTelegramError(error, token), token) })
+          }
+          let url = ''
+          try {
+            const info = await telegram.getWebhookInfo()
+            url = typeof info?.url === 'string' ? info.url : ''
+          } catch {
+            url = ''
+          }
+          update({ webhook: { url, checkedAt: Date.now() }, lastError: url === '' ? '' : `Webhook всё ещё задан: ${url}` })
+          await persist()
+          if (state.enabled === true && canPoll()) await startPollingIfWanted()
+          return json({
+            ok: url === '',
+            webhook: state.webhook,
+            polling: poller.running,
+            message: url === '' ? 'Webhook снят. Приём сообщений снова работает.' : `Webhook всё ещё задан: ${url}`,
+          })
+        },
+      })
+
+      ctx.connection.fetch.register({
+        path: SECURITY_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async request => {
+          await ready
+          const body = await readBody(request)
+          const patch = {}
+          if (typeof body.groupsEnabled === 'boolean') {
+            patch.security = { groupsEnabled: body.groupsEnabled }
+          }
+          if (typeof body.ownerUserId === 'string') {
+            const owner = normalizeChatId(body.ownerUserId)
+            if (owner === '') return json({ ok: false, message: 'Неверный ownerUserId.' })
+            patch.ownerUserId = owner
+            if (!state.allowedUserIds.includes(owner)) {
+              patch.allowedUserIds = normalizeChatIds([...state.allowedUserIds, owner])
+              patch.allowedChatIds = [...patch.allowedUserIds]
+            }
+            if (typeof body.ownerChatId === 'string' && normalizeChatId(body.ownerChatId) !== '') {
+              patch.ownerChatId = normalizeChatId(body.ownerChatId)
+            }
+          }
+          update(patch)
+          await persist()
+          return json({
+            ok: true,
+            security: state.security,
+            owner: { userId: state.ownerUserId, chatId: state.ownerChatId },
+            allowedUserIds: state.allowedUserIds,
+            message: 'Настройки безопасности сохранены.',
+          })
+        },
+      })
     }, 'dsh-inbox: routes')
   } catch (error) {
     console.error('[dsh-inbox] маршруты недоступны:', error)
@@ -1457,8 +1995,12 @@ export function apply(ctx) {
       () =>
         ctx.on('credentials/reference-updated', ref => {
           if (ref !== TOKEN_REF) return
-          // A new token may belong to another bot, which needs its own menu.
-          update({ botUsername: '', commandsMenu: { version: '', at: 0, ok: false } }, { persist: true })
+          // A new token may belong to another bot, which needs its own menu and profile.
+          update({
+            botUsername: '',
+            commandsMenu: { version: '', at: 0, ok: false },
+            botProfile: { ...state.botProfile, version: '', ok: false },
+          }, { persist: true })
           botId = ''
           if (shouldPoll()) {
             void resolveToken()
@@ -1485,8 +2027,9 @@ export function apply(ctx) {
       } else {
         await adoptQueueOffset()
         poller.start()
-        // The daily-cached command list is checked on every start.
+        // The daily-cached command list and bot profile are checked on every start.
         void refreshCommands()
+        void refreshBotProfile()
         if (state.botUsername === '') void verifyToken()
       }
       if (queue !== null && queue.configured()) {
@@ -1498,6 +2041,29 @@ export function apply(ctx) {
       stopped = true
       void poller.stop()
       worker?.stop()
+      answers.clear()
     }
   }, 'dsh-inbox: polling lifecycle')
+
+  // Answers from DSH: remember assistant text and finish on turn/end.
+  try {
+    ctx.effect(
+      () =>
+        ctx.on('session/event', (session, event) => {
+          void answers.handleEvent(session, event)
+        }),
+      'dsh-inbox: answers',
+    )
+  } catch (error) {
+    console.error('[dsh-inbox] ответы из DSH недоступны:', error)
+  }
+
+  // A lost turn/end must not leave «⏳ Думаю…» forever.
+  ctx.effect(() => {
+    const timer = setInterval(() => {
+      void answers.sweep()
+    }, ANSWER_SWEEP_MS)
+    if (typeof timer.unref === 'function') timer.unref()
+    return () => clearInterval(timer)
+  }, 'dsh-inbox: answer timeout')
 }

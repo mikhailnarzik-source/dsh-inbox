@@ -323,7 +323,7 @@ test('telegram_listen: предупреждает про 409, если слуш�
         device: { id: 'device-other', name: 'Другой ПК' },
         claimWaitMs: 20,
       })
-      await other.updateStatus({ listener: true, lastSyncAt: Date.now(), lastError: '', version: '0.4.1' })
+      await other.updateStatus({ listener: true, lastSyncAt: Date.now(), lastError: '', version: '0.5.0' })
       const sync = await callRoute(ctx, SYNC_PATH, {})
       assert.equal(sync.ok, true)
       const tool = ctx.toolsList.find(item => item.name === 'telegram_listen')

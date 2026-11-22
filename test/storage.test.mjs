@@ -34,7 +34,7 @@ function record(overrides = {}) {
   }
 }
 
-test('emptyState: пустая история, пустой белый список, меню и очередь', () => {
+test('emptyState: пустая история, белый список, меню, очередь и безопасность', () => {
   assert.deepEqual(emptyState(), {
     version: STATE_VERSION,
     offset: 0,
@@ -46,9 +46,15 @@ test('emptyState: пустая история, пустой белый спис�
     commandsMenu: { version: '', at: 0, ok: false },
     deviceId: '',
     queue: { listener: false },
+    allowedUserIds: [],
+    ownerUserId: '',
+    ownerChatId: '',
+    security: { groupsEnabled: false },
+    botProfile: { name: '', description: '', shortDescription: '', at: 0, version: '', ok: false },
+    webhook: { url: '', checkedAt: 0 },
     messages: [],
   })
-  assert.equal(STATE_VERSION, 4)
+  assert.equal(STATE_VERSION, 5)
 })
 
 test('normalizeState: мусор и неверные типы дают пустое состояние', () => {
@@ -245,6 +251,8 @@ test('messageFromUpdate: текст и подпись становятся за�
     chatId: '555',
     chatTitle: '@ivan',
     from: 'Иван',
+    fromId: '555',
+    chatType: 'private',
     text: 'Привет',
     at: new Date(1763800000 * 1000).toISOString(),
     direction: 'in',

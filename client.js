@@ -31,6 +31,9 @@ window.__ModuleLoader__.load({
     const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh';
     const QUEUE_LISTENER_PATH = '/api/dsh-inbox/queue/listener';
     const QUEUE_SYNC_PATH = '/api/dsh-inbox/queue/sync';
+    const PROFILE_REFRESH_PATH = '/api/dsh-inbox/profile/refresh';
+    const WEBHOOK_DELETE_PATH = '/api/dsh-inbox/webhook/delete';
+    const SECURITY_PATH = '/api/dsh-inbox/security';
     const REFRESH_MS = 4000;
 
     const en = {
@@ -101,9 +104,9 @@ window.__ModuleLoader__.load({
       allowSaved: 'List saved.',
       allowFailed: 'Could not save the list.',
       allowEmpty: 'The list is empty: nobody can control DSH from Telegram.',
-      allowCount: 'Chats in the list:',
+      allowCount: 'Users in the list:',
       allowCurrent: 'allowed',
-      allowAdd: 'Allow this chat',
+      allowAdd: 'Allow this user',
       allowAddDone: 'Chat allowed.',
       allowAddFailed: 'Could not allow the chat.',
       chatsTitle: 'Chats in the history',
@@ -170,6 +173,36 @@ window.__ModuleLoader__.load({
       queueInline: 'Queue is off: commands run on this device right away. Fill "remote" in ~/.dsh/dsh-sync.json to share them between devices.',
       queueHint: 'Commands are kept in the git branch inbox of the same repository as dsh-sync. Every device needs the bot token in its own vault; exactly one device is the listener.',
       queueNoToken: 'Save the bot token first.',
+      securityTitle: 'Security',
+      ownerLabel: 'Owner:',
+      ownerNone: 'not assigned yet',
+      ownerHint: 'The owner is the first allowed user. Change it only here: the agent tools cannot.',
+      ownerPlaceholder: 'Telegram user id',
+      ownerSave: 'Make owner',
+      ownerSaved: 'Owner changed.',
+      ownerSaveFailed: 'Could not change the owner.',
+      groupsLabel: 'Groups:',
+      groupsValueOn: 'allowed',
+      groupsValueOff: 'denied (recommended)',
+      groupsAllow: 'Allow groups',
+      groupsDeny: 'Forbid groups',
+      groupsHint: 'By default only private chats of allowed users may control DSH. A group would let every member drive your computer.',
+      usersHint: 'The whitelist stores Telegram user ids (from.id), not chat ids. A private chat id is usually the same number.',
+      answersPending: 'Waiting for DSH answers:',
+      profileTitle: 'Bot profile',
+      profileName: 'Name:',
+      profileDescription: 'Description:',
+      profileCommands: 'Commands:',
+      profileRefresh: 'Refresh profile',
+      profileRefreshing: 'Refreshing…',
+      profileRefreshed: 'Bot profile updated.',
+      profileFailed: 'Could not update the bot profile.',
+      profileNotPublished: 'not published yet',
+      webhookWarning: 'A webhook is set for this bot and blocks long polling:',
+      webhookDelete: 'Remove webhook',
+      webhookDeleteConfirm: 'Remove the webhook so long polling works again?',
+      webhookDeleted: 'Webhook removed.',
+      webhookFailed: 'Could not remove the webhook.',
     };
 
     const ru = {
@@ -240,9 +273,9 @@ window.__ModuleLoader__.load({
       allowSaved: 'Список сохранён.',
       allowFailed: 'Не удалось сохранить список.',
       allowEmpty: 'Список пуст: управлять DSH из Telegram нельзя никому.',
-      allowCount: 'Чатов в списке:',
+      allowCount: 'Пользователей в списке:',
       allowCurrent: 'разрешён',
-      allowAdd: 'Разрешить этот чат',
+      allowAdd: 'Разрешить пользователя',
       allowAddDone: 'Чат разрешён.',
       allowAddFailed: 'Не удалось разрешить чат.',
       chatsTitle: 'Чаты в истории',
@@ -309,6 +342,36 @@ window.__ModuleLoader__.load({
       queueInline: 'Очередь не настроена: команды выполняются на этом устройстве сразу. Заполните «remote» в ~/.dsh/dsh-sync.json, чтобы делить их между устройствами.',
       queueHint: 'Команды складываются в git-ветку inbox того же репозитория, что и dsh-sync. На каждом устройстве нужен свой токен бота в сейфе; слушателем может быть только одно устройство.',
       queueNoToken: 'Сначала сохраните токен бота.',
+      securityTitle: 'Безопасность',
+      ownerLabel: 'Владелец:',
+      ownerNone: 'ещё не назначен',
+      ownerHint: 'Владелец — первый разрешённый пользователь. Менять его можно только здесь: инструменты агента этого не умеют.',
+      ownerPlaceholder: 'Telegram user id',
+      ownerSave: 'Назначить владельцем',
+      ownerSaved: 'Владелец изменён.',
+      ownerSaveFailed: 'Не удалось изменить владельца.',
+      groupsLabel: 'Группы:',
+      groupsValueOn: 'разрешены',
+      groupsValueOff: 'запрещены (рекомендуется)',
+      groupsAllow: 'Разрешить группы',
+      groupsDeny: 'Запретить группы',
+      groupsHint: 'По умолчанию управлять DSH могут только личные чаты разрешённых пользователей. В группе командовать смог бы любой участник.',
+      usersHint: 'Белый список хранит Telegram user id (from.id), а не chat id. В личном чате это обычно одно и то же число.',
+      answersPending: 'Ждут ответа из DSH:',
+      profileTitle: 'Профиль бота',
+      profileName: 'Имя:',
+      profileDescription: 'Описание:',
+      profileCommands: 'Команды:',
+      profileRefresh: 'Обновить профиль',
+      profileRefreshing: 'Обновляем…',
+      profileRefreshed: 'Профиль бота обновлён.',
+      profileFailed: 'Не удалось обновить профиль бота.',
+      profileNotPublished: 'ещё не опубликован',
+      webhookWarning: 'У бота задан webhook, он блокирует long polling:',
+      webhookDelete: 'Снять webhook',
+      webhookDeleteConfirm: 'Снять webhook, чтобы long polling снова работал?',
+      webhookDeleted: 'Webhook снят.',
+      webhookFailed: 'Не удалось снять webhook.',
     };
 
     /**
@@ -451,6 +514,8 @@ window.__ModuleLoader__.load({
         const [verifyPhase, setVerifyPhase] = React.useState('idle');
         const [allowDraft, setAllowDraft] = React.useState('');
         const [allowDirty, setAllowDirty] = React.useState(false);
+        const [ownerDraft, setOwnerDraft] = React.useState('');
+        const [ownerDirty, setOwnerDirty] = React.useState(false);
         const mounted = React.useRef(true);
 
         const refresh = React.useCallback(async () => {
@@ -506,9 +571,18 @@ window.__ModuleLoader__.load({
         // The allow-list field follows the host until the user starts editing it.
         React.useEffect(() => {
           if (allowDirty) return;
-          const ids = Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : [];
+          const ids = Array.isArray(snapshot?.allowedUserIds)
+            ? snapshot.allowedUserIds
+            : (Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : []);
           setAllowDraft(ids.join(', '));
-        }, [snapshot?.allowedChatIds?.join(','), allowDirty]);
+        }, [snapshot?.allowedUserIds?.join(','), snapshot?.allowedChatIds?.join(','), allowDirty]);
+
+        // The owner field follows the host until edited here.
+        React.useEffect(() => {
+          if (ownerDirty) return;
+          const ownerId = typeof snapshot?.owner?.userId === 'string' ? snapshot.owner.userId : '';
+          setOwnerDraft(ownerId);
+        }, [snapshot?.owner?.userId, ownerDirty]);
 
         const run = async (action, work) => {
           if (busy !== '') return;
@@ -624,7 +698,7 @@ window.__ModuleLoader__.load({
             .map(item => item.trim())
             .filter(item => item !== '');
           try {
-            const payload = await call(ALLOWLIST_PATH, { chatIds: ids });
+            const payload = await call(ALLOWLIST_PATH, { userIds: ids });
             if (!mounted.current) return;
             if (payload?.ok === true) {
               setAllowDirty(false);
@@ -638,9 +712,9 @@ window.__ModuleLoader__.load({
           }
         });
 
-        const allowThisChat = chatId => run('allow-chat', async () => {
+        const allowThisChat = (chatId, userId) => run('allow-chat', async () => {
           try {
-            const payload = await call(ALLOWLIST_PATH, { add: chatId });
+            const payload = await call(ALLOWLIST_PATH, { add: userId ?? chatId });
             if (!mounted.current) return;
             setNotice({
               kind: payload?.ok === true ? 'ok' : 'bad',
@@ -649,6 +723,23 @@ window.__ModuleLoader__.load({
             await refresh();
           } catch {
             if (mounted.current) setNotice({ kind: 'bad', text: t('allowAddFailed') });
+          }
+        });
+
+        const saveOwner = () => run('owner', async () => {
+          const ownerId = ownerDraft.trim();
+          try {
+            const payload = await call(SECURITY_PATH, { ownerUserId: ownerId });
+            if (!mounted.current) return;
+            if (payload?.ok === true) {
+              setOwnerDirty(false);
+              setNotice({ kind: 'ok', text: payload.message ?? t('ownerSaved') });
+            } else {
+              setNotice({ kind: 'bad', text: payload?.message ?? t('ownerSaveFailed') });
+            }
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('ownerSaveFailed') });
           }
         });
 
@@ -715,6 +806,48 @@ window.__ModuleLoader__.load({
           }
         });
 
+        const refreshProfile = () => run('profile', async () => {
+          try {
+            const payload = await call(PROFILE_REFRESH_PATH, { force: true });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('profileRefreshed')) : (payload?.message ?? t('profileFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('profileFailed') });
+          }
+        });
+
+        const setGroups = enabled => run('security', async () => {          try {
+            const payload = await call(SECURITY_PATH, { groupsEnabled: enabled });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('securityTitle')) : (payload?.message ?? t('queueListenerFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('queueListenerFailed') });
+          }
+        });
+
+        const removeWebhook = () => run('webhook', async () => {
+          if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(t('webhookDeleteConfirm'))) return;
+          try {
+            const payload = await call(WEBHOOK_DELETE_PATH, {});
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('webhookDeleted')) : (payload?.message ?? t('webhookFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('webhookFailed') });
+          }
+        });
+
         const configured = snapshot?.configured === true;
         const enabled = snapshot?.enabled === true;
         const messages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
@@ -737,7 +870,17 @@ window.__ModuleLoader__.load({
               ? 'dsh-inbox-pill is-warn'
               : 'dsh-inbox-pill';
         const steps = [t('step1'), t('step2'), t('step3'), t('step4'), t('step5')];
-        const allowedIds = Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : [];
+        const allowedIds = Array.isArray(snapshot?.allowedUserIds)
+          ? snapshot.allowedUserIds
+          : (Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : []);
+        const security = snapshot?.security ?? {};
+        const groupsEnabled = security.groupsEnabled === true;
+        const owner = snapshot?.owner ?? {};
+        const profile = snapshot?.botProfile ?? {};
+        const profileOk = profile.ok === true;
+        const webhook = snapshot?.webhook ?? {};
+        const webhookUrl = typeof webhook.url === 'string' ? webhook.url : '';
+        const answersPending = Number(snapshot?.answersPending) || 0;
         const chats = Array.isArray(snapshot?.chats) ? snapshot.chats : [];
         const currentSession = snapshot?.currentSession ?? null;
         const menu = snapshot?.menu ?? {};
@@ -794,6 +937,23 @@ window.__ModuleLoader__.load({
               : null,
           notice !== null
             ? h('p', { className: notice.kind === 'ok' ? 'dsh-inbox-note' : 'dsh-inbox-note is-bad' }, notice.text)
+            : null,
+          webhookUrl !== ''
+            ? h(
+                'div',
+                { className: 'dsh-inbox-card' },
+                h('p', { className: 'dsh-inbox-error' }, `${t('webhookWarning')} ${webhookUrl}`),
+                h(
+                  'div',
+                  { className: 'dsh-inbox-row' },
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-inbox-button is-danger',
+                    disabled: busy !== '',
+                    onClick: () => void removeWebhook(),
+                  }, t('webhookDelete')),
+                ),
+              )
             : null,
           h(
             'div',
@@ -908,6 +1068,7 @@ window.__ModuleLoader__.load({
                 onClick: () => void saveAllowlist(),
               }, busy === 'allow' ? t('allowSaving') : t('allowSave')),
             ),
+            h('p', { className: 'dsh-inbox-hint' }, t('usersHint')),
             h('p', { className: 'dsh-inbox-hint' }, t('allowHint')),
             allowedIds.length === 0
               ? h('p', { className: 'dsh-inbox-error' }, t('allowEmpty'))
@@ -923,7 +1084,7 @@ window.__ModuleLoader__.load({
                     chats.map(chat => h(
                       'span',
                       { key: chat.chatId, className: chat.allowed ? 'dsh-inbox-chip' : 'dsh-inbox-chip is-blocked' },
-                      h('span', { className: 'dsh-inbox-chip-name', title: `${chat.chatTitle} (${chat.chatId})` },
+                      h('span', { className: 'dsh-inbox-chip-name', title: `${chat.chatTitle} (id ${chat.userId ?? chat.chatId}, ${chat.chatType ?? 'private'})` },
                         chat.chatTitle === '' ? chat.chatId : chat.chatTitle),
                       chat.allowed
                         ? h('span', { className: 'dsh-inbox-badge is-on' }, t('allowCurrent'))
@@ -931,13 +1092,61 @@ window.__ModuleLoader__.load({
                             type: 'button',
                             className: 'dsh-inbox-button',
                             disabled: busy !== '',
-                            onClick: () => void allowThisChat(chat.chatId),
+                            onClick: () => void allowThisChat(chat.chatId, chat.userId),
                           }, t('allowAdd')),
                     )),
                   ),
                 )
               : null,
             h('p', { className: 'dsh-inbox-hint' }, t('blockedHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('span', { className: 'dsh-inbox-label' }, t('securityTitle')),
+              h('span', { className: groupsEnabled ? 'dsh-inbox-badge is-off' : 'dsh-inbox-badge is-on' },
+                groupsEnabled ? t('groupsValueOn') : t('groupsValueOff')),
+            ),
+            h('p', { className: 'dsh-inbox-hint' },
+              `${t('ownerLabel')} ${owner.userId ? `${owner.userId}${owner.chatId ? ` (chat ${owner.chatId})` : ''}` : t('ownerNone')}`),
+            h('p', { className: 'dsh-inbox-hint' }, t('ownerHint')),
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('input', {
+                className: 'dsh-inbox-input',
+                type: 'text',
+                inputMode: 'numeric',
+                placeholder: t('ownerPlaceholder'),
+                value: ownerDraft,
+                disabled: busy !== '',
+                onChange: event => {
+                  setOwnerDirty(true);
+                  setOwnerDraft(event.target.value);
+                },
+              }),
+              h('button', {
+                type: 'button',
+                className: 'dsh-inbox-button',
+                disabled: busy !== '' || ownerDraft.trim() === '',
+                onClick: () => void saveOwner(),
+              }, busy === 'owner' ? t('saving') : t('ownerSave')),
+            ),
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('button', {
+                type: 'button',
+                className: groupsEnabled ? 'dsh-inbox-button is-danger' : 'dsh-inbox-button',
+                disabled: busy !== '',
+                onClick: () => void setGroups(!groupsEnabled),
+              }, groupsEnabled ? t('groupsDeny') : t('groupsAllow')),
+            ),
+            h('p', { className: groupsEnabled ? 'dsh-inbox-error' : 'dsh-inbox-hint' }, t('groupsHint')),
+            h('p', { className: 'dsh-inbox-hint' }, `${t('answersPending')} ${answersPending}`),
           ),
           h(
             'div',
@@ -994,6 +1203,31 @@ window.__ModuleLoader__.load({
               }, busy === 'menu' ? t('menuUpdating') : t('menuUpdate')),
             ),
             h('p', { className: 'dsh-inbox-hint' }, t('menuHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('span', { className: 'dsh-inbox-label' }, t('profileTitle')),
+              h('span', { className: profileOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+                profileOk ? (profile.name || t('profileTitle')) : t('profileNotPublished')),
+            ),
+            h('p', { className: 'dsh-inbox-hint' }, `${t('profileName')} ${profile.name || '—'}`),
+            h('p', { className: 'dsh-inbox-hint' }, `${t('profileDescription')} ${profile.description || '—'}`),
+            h('p', { className: 'dsh-inbox-hint' },
+              `${t('profileCommands')} ${Array.isArray(profile.commands) ? profile.commands.join(' · ') : '—'}`),
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('button', {
+                type: 'button',
+                className: 'dsh-inbox-button is-primary',
+                disabled: busy !== '',
+                onClick: () => void refreshProfile(),
+              }, busy === 'profile' ? t('profileRefreshing') : t('profileRefresh')),
+            ),
           ),
           h(
             'div',
