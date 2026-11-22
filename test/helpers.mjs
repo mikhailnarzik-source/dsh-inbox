@@ -1,0 +1,149 @@
+/**
+ * Shared test helpers: a temporary inbox directory, a minimal plugin context
+ * and an in-memory Telegram API.
+ */
+
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+/**
+ * Run a test body with `DSH_INBOX_DIR` pointing at a fresh temporary directory.
+ * @param body - async callback receiving the directory path.
+ * @returns whatever the callback returns.
+ */
+export async function withTempInbox(body) {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-inbox-test-'))
+  const previous = process.env.DSH_INBOX_DIR
+  process.env.DSH_INBOX_DIR = dir
+  try {
+    return await body(dir)
+  } finally {
+    if (previous === undefined) delete process.env.DSH_INBOX_DIR
+    else process.env.DSH_INBOX_DIR = previous
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Minimal plugin context that records tools, routes and effect disposers.
+ * @param options - `{ token?, writable? }` for the credential store stub.
+ * @returns the fake context.
+ */
+export function fakeContext(options = {}) {
+  const token = typeof options.token === 'string' ? options.token : ''
+  const writable = options.writable !== false
+  const tools = []
+  const routes = []
+  const effects = []
+  const ctx = {
+    tools: { register: definition => tools.push(definition) },
+    connection: { fetch: { register: route => routes.push(route) } },
+    credentials: {
+      resolve: async () => (token === '' ? undefined : { value: token, source: 'stored' }),
+      describe: async () => ({ configured: token !== '', writable }),
+    },
+    sessionPersistence: {},
+    effect: callback => {
+      const dispose = callback()
+      if (typeof dispose === 'function') effects.push(dispose)
+      return () => {}
+    },
+    on: () => () => {},
+  }
+  ctx.toolsList = tools
+  ctx.routesList = routes
+  ctx.disposeAll = async () => {
+    while (effects.length > 0) {
+      const dispose = effects.pop()
+      try {
+        await dispose()
+      } catch {
+        // a disposer must not mask the test result
+      }
+    }
+  }
+  return ctx
+}
+
+/**
+ * Call one registered POST route.
+ * @param ctx - fake context after `apply`.
+ * @param path - route path.
+ * @param payload - JSON body.
+ * @returns the parsed response body.
+ */
+export async function callRoute(ctx, path, payload) {
+  const route = ctx.routesList.find(item => item.path === path)
+  if (route === undefined) throw new Error(`маршрут ${path} не зарегистрирован`)
+  const response = await route.fetch(new Request(`http://localhost${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload ?? {}),
+  }))
+  return await response.json()
+}
+
+/** One Telegram-style JSON response. */
+export function telegramResponse(result, status = 200) {
+  return new Response(JSON.stringify({ ok: status === 200, result }), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/** One Telegram-style error response. */
+export function telegramError(errorCode, description, status) {
+  return new Response(JSON.stringify({ ok: false, error_code: errorCode, description }), {
+    status: status ?? errorCode,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/**
+ * Replace the global `fetch` for the duration of one test.
+ * @param handler - `({ url, method, body }) => Response`.
+ * @returns `{ calls, restore }`.
+ */
+export function installFetch(handler) {
+  const previous = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input?.url ?? input)
+    let body
+    try {
+      body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+    } catch {
+      body = undefined
+    }
+    const method = url.slice(url.lastIndexOf('/') + 1)
+    calls.push({ url, method, body })
+    return await handler({ url, method, body, calls })
+  }
+  return {
+    calls,
+    restore() {
+      globalThis.fetch = previous
+    },
+  }
+}
+
+/**
+ * Poll a predicate until it is true or the timeout expires.
+ * @param predicate - async check.
+ * @param timeoutMs - how long to wait.
+ * @returns true when the predicate became true.
+ */
+export async function waitFor(predicate, timeoutMs = 2000) {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (await predicate()) return true
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  return false
+}
+
+/** Pause for a test. */
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}

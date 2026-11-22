@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Inbox",
+    "description": "A Telegram bot for DSH: messages sent to the bot land in the history, the agent can read them and reply in your name, and the plugin page shows the latest messages, a reply field, a receive switch and a token check. The bot token is kept in the DSH credential store under TELEGRAM_BOT_TOKEN and never reaches the browser. Find it under Plugins.",
+    "detail": "docs/DETAIL.md"
+  }
+}
