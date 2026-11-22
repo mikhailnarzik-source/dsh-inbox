@@ -15,13 +15,26 @@ import { join } from 'node:path'
 export async function withTempInbox(body) {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-inbox-test-'))
   const previous = process.env.DSH_INBOX_DIR
+  const previousSync = process.env.DSH_INBOX_SYNC_CONFIG
+  const previousRemote = process.env.DSH_INBOX_QUEUE_REMOTE
+  const previousQueueDir = process.env.DSH_INBOX_QUEUE_DIR
   process.env.DSH_INBOX_DIR = dir
+  // Never touch the real dsh-sync settings or remote from a test.
+  process.env.DSH_INBOX_SYNC_CONFIG = join(dir, 'no-sync-config.json')
+  delete process.env.DSH_INBOX_QUEUE_REMOTE
+  delete process.env.DSH_INBOX_QUEUE_DIR
   try {
     return await body(dir)
   } finally {
     if (previous === undefined) delete process.env.DSH_INBOX_DIR
     else process.env.DSH_INBOX_DIR = previous
-    await rm(dir, { recursive: true, force: true })
+    if (previousSync === undefined) delete process.env.DSH_INBOX_SYNC_CONFIG
+    else process.env.DSH_INBOX_SYNC_CONFIG = previousSync
+    if (previousRemote === undefined) delete process.env.DSH_INBOX_QUEUE_REMOTE
+    else process.env.DSH_INBOX_QUEUE_REMOTE = previousRemote
+    if (previousQueueDir === undefined) delete process.env.DSH_INBOX_QUEUE_DIR
+    else process.env.DSH_INBOX_QUEUE_DIR = previousQueueDir
+    await rm(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 120 })
   }
 }
 

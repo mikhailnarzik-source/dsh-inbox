@@ -217,6 +217,8 @@ test('client.js: страница рисуется без ошибок и сод
     'inbox.sessionBlockTitle',
     'inbox.menuTitle',
     'inbox.menuUpdate',
+    'inbox.queueTitle',
+    'inbox.queueInline',
     'inbox.commandsTitle',
     'inbox.cmdSessions',
     'inbox.cmdCancel',

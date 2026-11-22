@@ -46,6 +46,9 @@ import {
   statusInlineKeyboard,
 } from './lib/menu.mjs'
 import { callbackFromUpdate, messageFromUpdate } from './lib/messages.mjs'
+import { botIdFromToken, loadOrCreateDevice } from './lib/device.mjs'
+import { QUEUE_BRANCH, createGitQueue, resolveSyncRemote } from './lib/queue.mjs'
+import { createQueueWorker } from './lib/queue-worker.mjs'
 
 /** Plugin name; also the id of the bundle row in `cordis.patch.yml`. */
 export const name = 'dsh-inbox'
@@ -95,6 +98,12 @@ const SESSION_RESET_PATH = '/api/dsh-inbox/session/reset'
 /** Route the page calls to re-publish the Telegram command menu. */
 const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh'
 
+/** Route the page calls to switch this device's Telegram listener on or off. */
+const QUEUE_LISTENER_PATH = '/api/dsh-inbox/queue/listener'
+
+/** Route the page calls to sync the shared queue now. */
+const QUEUE_SYNC_PATH = '/api/dsh-inbox/queue/sync'
+
 /**
  * Build one JSON response.
  * @param value - body to serialise.
@@ -135,11 +144,20 @@ export function apply(ctx) {
   /** Serialises file writes so two batches cannot interleave. */
   let writeChain = Promise.resolve()
 
-  /** Resolves after the first read of the state file. */
-  const ready = readState().then(loaded => {
-    state = { ...loaded, lastError: '' }
-    return state
-  })
+  /** This device's stable identity; filled by `ready`. */
+  let device = { id: '', name: '' }
+
+  /** Numeric bot id derived from the current token; never persisted with the queue. */
+  let botId = ''
+
+  /** Shared git queue; `null` until `ready` resolves, and when no remote is set. */
+  let queue = null
+
+  /** Queue worker; `null` until `ready` resolves. */
+  let worker = null
+
+  /** Last queue-level failure, for the page and the status tool. */
+  let queueLastError = ''
 
   /** Write the current state, one write at a time. */
   const persist = () => {
@@ -163,11 +181,144 @@ export function apply(ctx) {
     return state
   }
 
+  /**
+   * Load the state file, the device identity and the shared queue. Routes and
+   * tools await this promise, so the queue is ready before the first poll.
+   */
+  const ready = (async () => {
+    const loaded = await readState()
+    state = { ...loaded, lastError: '' }
+    try {
+      device = await loadOrCreateDevice()
+    } catch (error) {
+      queueLastError = `не удалось прочитать идентификатор устройства: ${error?.message ?? error}`
+      device = { id: '', name: '' }
+    }
+    if (device.id !== '') {
+      const remoteUrl = await resolveSyncRemote()
+      queue = createGitQueue({
+        remoteUrl,
+        device: { id: device.id, name: device.name },
+        getBotId: () => botId,
+      })
+      worker = createQueueWorker({
+        queue,
+        execute: executeQueuedCommand,
+        send: sendQueuedReply,
+        isListener: () => state.queue?.listener === true,
+        intervalMs: Number.isFinite(Number(process.env.DSH_INBOX_QUEUE_INTERVAL_MS)) && process.env.DSH_INBOX_QUEUE_INTERVAL_MS !== ''
+          ? Number(process.env.DSH_INBOX_QUEUE_INTERVAL_MS)
+          : 4000,
+        log: message => console.warn(message),
+      })
+      if (state.deviceId !== device.id) {
+        update({ deviceId: device.id })
+        await persist()
+      }
+    }
+    return state
+  })()
+
+  /** Whether this device is the Telegram listener (or the queue is not used). */
+  const canPoll = () => (queue !== null && queue.configured() ? state.queue?.listener === true : true)
+
+  /** Whether the polling loop should run right now. */
+  const shouldPoll = () => state.enabled === true && canPoll()
+
+  /** Adopt the queue's saved Telegram offset before a listener starts. */
+  async function adoptQueueOffset() {
+    if (queue === null || !queue.configured()) return
+    const saved = await queue.readOffset().catch(() => undefined)
+    if (Number.isFinite(saved) && saved > state.offset) {
+      update({ offset: Math.floor(saved) })
+      await persist()
+    }
+  }
+
+  /** Start polling if the current flags allow it. */
+  async function startPollingIfWanted() {
+    if (!shouldPoll()) return false
+    await adoptQueueOffset()
+    poller.start()
+    void refreshCommands()
+    return true
+  }
+
+  /** Queue status for the page and the tool: local reads, no network. */
+  async function queueStatus() {
+    await ready
+    const ws = worker?.status?.() ?? {}
+    const base = {
+      configured: queue !== null && queue.configured(),
+      mode: queue !== null && queue.configured() ? 'queue' : 'inline',
+      branch: QUEUE_BRANCH,
+      device: { id: device.id, name: device.name, botId },
+      listener: state.queue?.listener === true,
+      polling: poller.running,
+      counts: { total: 0, new: 0, inProgress: 0, done: 0 },
+      devices: [],
+      otherListener: null,
+      inProgress: [],
+      worker: {
+        running: ws.running === true,
+        busy: ws.busy === true,
+        lastSyncAt: Number(ws.lastSyncAt) || 0,
+        lastError: typeof ws.lastError === 'string' ? ws.lastError : '',
+      },
+      lastSyncAt: Number(ws.lastSyncAt) || 0,
+      lastError: typeof ws.lastError === 'string' && ws.lastError !== '' ? ws.lastError : queueLastError,
+    }
+    if (queue === null || !queue.configured()) return base
+    base.remote = queue.remoteUrl
+    let snapshot = { items: [], counts: base.counts }
+    try {
+      snapshot = await queue.snapshot()
+    } catch (error) {
+      base.lastError = `не удалось прочитать очередь: ${error?.message ?? error}`
+    }
+    base.counts = snapshot.counts
+    base.inProgress = snapshot.items
+      .filter(item => item.done !== true && item.result === undefined && item.winner !== undefined)
+      .slice(0, 5)
+      .map(item => ({
+        commandId: item.command.commandId,
+        deviceName: item.winner.deviceName,
+        chatTitle: item.command.chatTitle,
+        text: String(item.command.text ?? '').slice(0, 80),
+      }))
+    try {
+      base.devices = await queue.statuses()
+    } catch {
+      base.devices = []
+    }
+    const other = base.devices.find(entry => entry.listener === true && entry.deviceId !== device.id)
+    if (other !== undefined) base.otherListener = { deviceId: other.deviceId, deviceName: other.deviceName }
+    return base
+  }
+
+  /** Publish this device's status file (best effort; the worker also does it). */
+  async function pushDeviceStatus() {
+    if (queue === null || !queue.configured()) return
+    try {
+      await queue.updateStatus({
+        listener: state.queue?.listener === true,
+        lastSyncAt: worker?.status?.().lastSyncAt ?? 0,
+        lastError: worker?.status?.().lastError ?? '',
+        version: MENU_VERSION,
+      })
+    } catch (error) {
+      queueLastError = `не удалось обновить статус устройства: ${error?.message ?? error}`
+    }
+  }
+
   /** The bot token from the credential store, or ''. */
   const resolveToken = async () => {
     try {
       const hit = await ctx.credentials.resolve(TOKEN_REF)
-      return typeof hit?.value === 'string' ? hit.value.trim() : ''
+      const token = typeof hit?.value === 'string' ? hit.value.trim() : ''
+      const derived = botIdFromToken(token)
+      if (derived !== '') botId = derived
+      return token
     } catch {
       return ''
     }
@@ -510,23 +661,107 @@ export function apply(ctx) {
   }
 
   /**
-   * Answer one processed message.
-   * @param record - incoming history record.
-   * @param ok - whether the command succeeded.
-   * @param summary - one short line.
-   * @param details - optional command output.
-   * @param markup - optional `reply_markup` payload.
+   * Build the reply of one message command without sending it.
+   * @param record - `{ chatId, chatTitle, text }`.
+   * @returns `{ status: 'ok'|'error', text, markup? }`.
    */
-  async function answer(record, ok, summary, details, markup) {
+  async function buildCommandReply(record) {
+    const pressed = MENU_BUTTON_ACTIONS[record.text.trim()]
+    let text = record.text
+    if (pressed !== undefined) {
+      if (pressed.hint === 'new') {
+        return { status: 'ok', text: MENU_TEXTS.hintNew, markup: replyKeyboard() }
+      }
+      text = `/${pressed.command}`
+    }
+    const parsed = parseIncoming(text)
     try {
-      await sendTelegram(record.chatId, formatAck(ok, summary, details), {
-        chatTitle: record.chatTitle,
-        replyMarkup: markup,
+      const result = await executeCommand({
+        command: parsed.command,
+        args: parsed.args,
+        chatId: record.chatId,
+        deps: commandDeps,
       })
+      return {
+        status: 'ok',
+        text: formatAck(true, result.summary, result.details),
+        markup: result.replyKeyboard === true ? replyKeyboard() : result.inlineKeyboard,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        status: 'error',
+        text: formatAck(false, typeof message === 'string' && message !== '' ? message : 'неизвестная ошибка'),
+      }
+    }
+  }
+
+  /** Send one command reply and remember it in the local history. */
+  async function deliverReply(record, reply) {
+    try {
+      await sendTelegram(record.chatId, reply.text, {
+        chatTitle: record.chatTitle,
+        replyMarkup: reply.markup,
+      })
+      return { ok: true }
     } catch (error) {
       update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
       await persist()
+      return { ok: false, message: redact(error?.message ?? error) }
     }
+  }
+
+  /**
+   * Execute the command of one allowed message and answer it. This is the legacy
+   * inline path used when the shared queue has no configured remote.
+   * @param record - incoming message from an allowed chat.
+   */
+  async function processIncoming(record) {
+    const reply = await buildCommandReply(record)
+    await deliverReply(record, reply)
+  }
+
+  /**
+   * Execute one queued command on the device that won the claim. The reply is
+   * returned to the worker, which publishes it exactly once.
+   * @param command - queued command record.
+   * @returns `{ status, output, text?, markup?, chatId?, chatTitle?, delivered? }`.
+   */
+  async function executeQueuedCommand(command) {
+    if (command.callback !== undefined) {
+      // A callback needs its own answer and message edit, so the executor sends
+      // those itself and reports the command as delivered.
+      await handleCallback({
+        callbackId: command.callback.callbackId,
+        chatId: command.chatId,
+        chatTitle: command.chatTitle,
+        messageId: command.callback.messageId,
+        data: command.callback.data,
+        from: '',
+      })
+      return {
+        status: 'ok',
+        output: `кнопка: ${command.callback.data}`,
+        delivered: true,
+      }
+    }
+    const record = { chatId: command.chatId, chatTitle: command.chatTitle, text: command.text }
+    const reply = await buildCommandReply(record)
+    return {
+      ...reply,
+      output: reply.text.slice(0, 500),
+      chatId: record.chatId,
+      chatTitle: record.chatTitle,
+      delivered: false,
+    }
+  }
+
+  /** Publish a queued command's reply (called by the worker once). */
+  async function sendQueuedReply(payload) {
+    await sendTelegram(payload.chatId, payload.text, {
+      chatTitle: payload.chatTitle,
+      replyMarkup: payload.markup,
+    })
   }
 
   /**
@@ -542,40 +777,6 @@ export function apply(ctx) {
     } catch (error) {
       update({ lastError: `не удалось отправить сообщение в Telegram: ${redact(error?.message ?? error)}` })
       await persist()
-    }
-  }
-
-  /**
-   * Execute the command of one allowed message and answer it. A pressed reply
-   * keyboard button arrives as its text, so it is translated back into the
-   * command it stands for before parsing.
-   * @param record - incoming message from an allowed chat.
-   */
-  async function processIncoming(record) {
-    const pressed = MENU_BUTTON_ACTIONS[record.text.trim()]
-    let text = record.text
-    if (pressed !== undefined) {
-      if (pressed.hint === 'new') {
-        await say(record.chatId, record.chatTitle, MENU_TEXTS.hintNew, replyKeyboard())
-        return
-      }
-      text = `/${pressed.command}`
-    }
-    const parsed = parseIncoming(text)
-    try {
-      const result = await executeCommand({
-        command: parsed.command,
-        args: parsed.args,
-        chatId: record.chatId,
-        deps: commandDeps,
-      })
-      const markup = result.replyKeyboard === true ? replyKeyboard() : result.inlineKeyboard
-      await answer(record, true, result.summary, result.details, markup)
-    } catch (error) {
-      const message = error instanceof SessionsError || error instanceof Error
-        ? error.message
-        : String(error)
-      await answer(record, false, typeof message === 'string' && message !== '' ? message : 'неизвестная ошибка')
     }
   }
 
@@ -771,17 +972,74 @@ export function apply(ctx) {
   }
 
   /**
-   * Handle one long-poll batch: advance the offset, store messages, answer
-   * allowed chats, deny unknown ones and run pressed buttons.
+   * Answer one pressed button quickly (stops the Telegram spinner) without
+   * waiting for the queue executor.
+   */
+  async function answerCallbackQuick(callback, text) {
+    const token = await resolveToken()
+    if (token === '') return
+    telegram.setToken(token)
+    try {
+      await telegram.answerCallbackQuery({
+        callbackQueryId: callback.callbackId,
+        text: typeof text === 'string' ? text : '',
+        showAlert: false,
+      })
+    } catch {
+      // the executor may answer again later
+    }
+  }
+
+  /** Denial notice for a chat outside the allow-list, rate-limited per chat. */
+  async function denyForeign(record) {
+    if (!denyLimiter.shouldNotify(record.chatId)) return
+    try {
+      await sendTelegram(record.chatId, REPLIES.denied, { record: false })
+    } catch (error) {
+      update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
+    }
+  }
+
+  /**
+   * Handle one long-poll batch. Without a configured shared queue the commands
+   * run inline (single-device mode). With a queue every allowed update becomes an
+   * immutable command file; the worker executes it on whichever device wins the
+   * claim, and the offset advances only after the batch was pushed.
    * @param batch - `{ updates, offset, signal }` from the poller.
    */
   async function handleBatch({ updates, offset }) {
+    const queueActive = queue !== null && queue.configured()
     const incoming = []
+    const commands = []
     const callbacks = []
     for (const update of updates) {
       const callback = callbackFromUpdate(update)
       if (callback !== undefined) {
-        callbacks.push(callback)
+        if (!queueActive) {
+          callbacks.push(callback)
+          continue
+        }
+        if (callback.chatId === '') {
+          await answerCallbackQuick(callback, 'Не удалось определить чат.')
+          continue
+        }
+        if (!isChatAllowed(state, callback.chatId)) {
+          await answerCallbackQuick(callback, MENU_TEXTS.callbackDenied)
+          await denyForeign(callback)
+          continue
+        }
+        // Stop the spinner now; the executor edits the message later.
+        await answerCallbackQuick(callback, '')
+        commands.push({
+          chatId: callback.chatId,
+          chatTitle: callback.chatTitle,
+          updateId: Number(update.update_id),
+          callback: {
+            callbackId: callback.callbackId,
+            data: callback.data,
+            messageId: callback.messageId,
+          },
+        })
         continue
       }
       const record = messageFromUpdate(update)
@@ -789,28 +1047,44 @@ export function apply(ctx) {
       if (!isChatAllowed(state, record.chatId)) {
         // Stored so the page can show the chat and offer "Разрешить этот чат".
         incoming.push({ ...record, blocked: true })
-        if (denyLimiter.shouldNotify(record.chatId)) {
-          try {
-            await sendTelegram(record.chatId, REPLIES.denied, { record: false })
-          } catch (error) {
-            update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
-          }
-        }
+        await denyForeign(record)
         continue
       }
       incoming.push(record)
+      if (queueActive) {
+        commands.push({
+          chatId: record.chatId,
+          chatTitle: record.chatTitle,
+          updateId: Number(update.update_id),
+          text: record.text,
+        })
+      }
+    }
+    if (!queueActive) {
+      const appended = addMessages({ ...state, messages: state.messages }, incoming)
+      update({ offset, messages: appended.messages, lastError: '' })
+      await persist()
+      for (const record of incoming) {
+        if (record.blocked === true) continue
+        if (record.text.trim() === '') continue
+        await processIncoming(record)
+      }
+      for (const callback of callbacks) {
+        await handleCallback(callback)
+      }
+      return
+    }
+    // Queue mode: one push per batch, then the offset and the local history.
+    const committed = await queue.commitBatch({ commands, offset })
+    if (!committed.ok) {
+      update({ lastError: `очередь: ${committed.message ?? 'не удалось сохранить команды'}` })
+      await persist()
+      return
     }
     const appended = addMessages({ ...state, messages: state.messages }, incoming)
-    update({ offset, messages: appended.messages, lastError: '' })
+    update({ offset: Math.floor(offset), messages: appended.messages, lastError: '' })
     await persist()
-    for (const record of incoming) {
-      if (record.blocked === true) continue
-      if (record.text.trim() === '') continue
-      await processIncoming(record)
-    }
-    for (const callback of callbacks) {
-      await handleCallback(callback)
-    }
+    void worker?.runNow()
   }
 
   /** Long polling: collect updates into the history, keep the offset. */
@@ -825,7 +1099,7 @@ export function apply(ctx) {
   /**
    * Switch the receive flag and start or stop the loop.
    * @param enabled - wanted value.
-   * @returns `{ enabled, polling, lastError }`.
+   * @returns `{ enabled, polling, lastError, listenerActive }`.
    */
   async function setPolling(enabled) {
     const wanted = enabled === true
@@ -836,13 +1110,57 @@ export function apply(ctx) {
     }
     await persist()
     if (wanted) {
-      // Enabling receiving means the token works: make sure the «/» menu exists.
-      await refreshCommands()
-      poller.start()
+      const pollAllowed = await startPollingIfWanted()
+      if (!pollAllowed) {
+        update({ lastError: 'Telegram слушает другое устройство: включите «Слушать Telegram здесь» или выключите приём.' })
+        await persist()
+      }
     } else {
       await poller.stop()
     }
-    return { enabled: state.enabled, polling: poller.running, lastError: state.lastError ?? '' }
+    return {
+      enabled: state.enabled,
+      polling: poller.running,
+      lastError: state.lastError ?? '',
+      listenerActive: canPoll(),
+    }
+  }
+
+  /**
+   * Switch the "listen to Telegram here" role of this device. Only one device
+   * may poll the bot: Telegram returns 409 to a second getUpdates consumer.
+   * @param enabled - wanted value.
+   * @returns `{ ok, listener, enabled, message }`.
+   */
+  async function setQueueListener(enabled) {
+    await ready
+    if (enabled === true) {
+      if (queue === null || !queue.configured()) {
+        return { ok: false, listener: false, enabled: state.enabled, message: 'Общая очередь не настроена: заполните remote в ~/.dsh/dsh-sync.json.' }
+      }
+      const token = await resolveToken()
+      if (token === '') {
+        return { ok: false, listener: false, enabled: state.enabled, message: 'Сначала сохраните токен бота: без него Telegram не опросить.' }
+      }
+      update({ queue: { listener: true }, enabled: true, lastError: '' })
+      await persist()
+      await adoptQueueOffset()
+      poller.start()
+      await refreshCommands()
+      worker?.start()
+      await pushDeviceStatus()
+      return { ok: true, listener: true, enabled: true, message: 'Это устройство слушает Telegram.' }
+    }
+    update({ queue: { listener: false }, enabled: false })
+    await persist()
+    await poller.stop()
+    await pushDeviceStatus()
+    return {
+      ok: true,
+      listener: false,
+      enabled: false,
+      message: 'Приём на этом устройстве выключен. Слушателем станет другое устройство.',
+    }
   }
 
   // Routes live as one effect: unloading the plugin removes all of them.
@@ -873,6 +1191,8 @@ export function apply(ctx) {
             allowedChatIds: state.allowedChatIds,
             currentSession,
             chats,
+            device: { id: device.id, name: device.name },
+            queue: await queueStatus(),
             menu: {
               version: MENU_VERSION,
               publishedVersion: state.commandsMenu?.version ?? '',
@@ -1044,6 +1364,38 @@ export function apply(ctx) {
           return json({ ok: result.ok === true, ...result })
         },
       })
+
+      ctx.connection.fetch.register({
+        path: QUEUE_LISTENER_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async request => {
+          await ready
+          const body = await readBody(request)
+          const result = await setQueueListener(body.enabled === true)
+          return json({ ...result, queue: await queueStatus() })
+        },
+      })
+
+      ctx.connection.fetch.register({
+        path: QUEUE_SYNC_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async () => {
+          await ready
+          if (queue === null || !queue.configured()) {
+            return json({ ok: false, message: 'Общая очередь не настроена: заполните remote в ~/.dsh/dsh-sync.json.' })
+          }
+          const result = worker === null ? { ok: false } : await worker.runNow()
+          await pushDeviceStatus()
+          return json({
+            ok: result.ok === true,
+            message: result.ok === true ? 'Очередь синхронизирована.' : (result.message ?? 'синхронизация не удалась'),
+            executed: result.executed ?? [],
+            queue: await queueStatus(),
+          })
+        },
+      })
     }, 'dsh-inbox: routes')
   } catch (error) {
     console.error('[dsh-inbox] маршруты недоступны:', error)
@@ -1058,6 +1410,7 @@ export function apply(ctx) {
       sendReply,
       addAllowedChat,
       currentSessionInfo: currentSessionForLastChat,
+      queueStatus,
     })) {
       ctx.tools.register(tool)
     }
@@ -1074,10 +1427,12 @@ export function apply(ctx) {
           if (ref !== TOKEN_REF) return
           // A new token may belong to another bot, which needs its own menu.
           update({ botUsername: '', commandsMenu: { version: '', at: 0, ok: false } }, { persist: true })
-          if (state.enabled === true) {
-            poller.start()
-            void refreshCommands()
+          botId = ''
+          if (shouldPoll()) {
+            void resolveToken()
+            void startPollingIfWanted()
           }
+          void pushDeviceStatus()
         }),
       'dsh-inbox: token tracking',
     )
@@ -1085,21 +1440,32 @@ export function apply(ctx) {
     console.error('[dsh-inbox] отслеживание токена недоступно:', error)
   }
 
-  // Resume polling after a restart, and fill the bot name once when polling is
-  // already on.
+  // Resume the queue worker and polling after a restart.
   ctx.effect(() => {
     let stopped = false
-    void ready.then(() => {
+    void ready.then(async () => {
       if (stopped) return
-      if (state.enabled !== true) return
-      poller.start()
-      // The daily-cached command list is checked on every start.
-      void refreshCommands()
-      if (state.botUsername === '') void verifyToken()
+      if (!shouldPoll()) {
+        if (state.enabled === true && !canPoll()) {
+          update({ lastError: 'Telegram слушает другое устройство: включите «Слушать Telegram здесь» или выключите приём.' })
+          await persist()
+        }
+      } else {
+        await adoptQueueOffset()
+        poller.start()
+        // The daily-cached command list is checked on every start.
+        void refreshCommands()
+        if (state.botUsername === '') void verifyToken()
+      }
+      if (queue !== null && queue.configured()) {
+        worker?.start()
+        await pushDeviceStatus()
+      }
     })
     return () => {
       stopped = true
       void poller.stop()
+      worker?.stop()
     }
   }, 'dsh-inbox: polling lifecycle')
 }

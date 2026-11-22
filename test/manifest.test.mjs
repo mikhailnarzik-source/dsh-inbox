@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.3.0 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.4.0 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.3.0')
+  assert.equal(manifest.version, '0.4.0')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')
@@ -84,6 +84,9 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
     'lib/replies.mjs',
     'lib/access.mjs',
     'lib/menu.mjs',
+    'lib/device.mjs',
+    'lib/queue.mjs',
+    'lib/queue-worker.mjs',
   ]) {
     await exists(relative)
   }
@@ -108,6 +111,8 @@ test('index.js объявляет имя, inject, apply и не содержит
     '/api/dsh-inbox/allowlist',
     '/api/dsh-inbox/session/reset',
     '/api/dsh-inbox/menu/refresh',
+    '/api/dsh-inbox/queue/listener',
+    '/api/dsh-inbox/queue/sync',
   ]) {
     assert.ok(source.includes(path), `маршрут ${path} объявлен`)
   }
@@ -120,8 +125,9 @@ test('index.js объявляет имя, inject, apply и не содержит
     sendReply: async () => ({}),
     addAllowedChat: async () => ({ changed: true, allowedChatIds: [] }),
     currentSessionInfo: async () => null,
+    queueStatus: async () => null,
   }).map(tool => tool.name).sort()
-  assert.deepEqual(toolNames, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_send', 'telegram_status'])
+  assert.deepEqual(toolNames, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_queue_status', 'telegram_send', 'telegram_status'])
   assert.equal(source.includes('\uFFFD'), false, 'нет битых символов')
 })
 
@@ -140,6 +146,7 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(readme, /\/new/)
   assert.match(readme, /\/cancel/)
   assert.match(readme, /Меню Telegram/)
+  assert.match(readme, /Работа с нескольких устройств/)
   const detail = await readFile(join(ROOT, 'docs', 'DETAIL.md'), 'utf8')
   assert.match(detail, /@BotFather/)
   assert.match(detail, /Что это и зачем/)
@@ -153,6 +160,7 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(detail, /Команды бота/)
   assert.match(detail, /Управление сессиями/)
   assert.match(detail, /Меню Telegram/)
+  assert.match(detail, /Работа с нескольких устройств/)
   for (const text of [readme, detail]) {
     assert.equal(text.includes('\uFFFD'), false, 'нет битых символов')
   }

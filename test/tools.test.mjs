@@ -36,12 +36,12 @@ async function mount(options = {}) {
   return ctx
 }
 
-test('инструменты: зарегистрированы пять telegram_* инструментов', async () => {
+test('инструменты: зарегистрированы шесть telegram_* инструментов', async () => {
   await withTempInbox(async () => {
     const ctx = await mount()
     try {
       const names = ctx.toolsList.map(tool => tool.name).sort()
-      assert.deepEqual(names, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_send', 'telegram_status'])
+      assert.deepEqual(names, ['telegram_allow', 'telegram_allowed', 'telegram_messages', 'telegram_queue_status', 'telegram_send', 'telegram_status'])
       for (const tool of ctx.toolsList) {
         assert.equal(typeof tool.description, 'string', `${tool.name}: описание`)
         assert.equal(typeof tool.parameters, 'object', `${tool.name}: parameters`)
@@ -214,8 +214,7 @@ test('telegram_status: показывает историю и белую ком�
   })
 })
 
-test('telegram_messages: сообщение из чужого чата помечено «нет доступа»', async () => {
-  await withTempInbox(async dir => {
+test('telegram_messages: сообщение из чужого чата помечено «нет доступа»', async () => {  await withTempInbox(async dir => {
     const messages = [{
       chatId: '999',
       chatTitle: 'Незнакомец',
@@ -255,6 +254,21 @@ test('telegram_send: пустой текст, отсутствие чата и �
       await assert.rejects(() => tool.execute({ text: 'привет' }), /Нет чата/)
     } finally {
       await empty.disposeAll()
+    }
+  })
+})
+
+test('telegram_queue_status: без remote показывает режим inline', async () => {
+  await withTempInbox(async () => {
+    const ctx = await mount()
+    try {
+      const tool = ctx.toolsList.find(item => item.name === 'telegram_queue_status')
+      const text = await tool.execute({})
+      assert.match(text, /Общая очередь команд: не настроена/)
+      assert.match(text, /inline/)
+      assert.match(text, /dsh-sync\.json/)
+    } finally {
+      await ctx.disposeAll()
     }
   })
 })

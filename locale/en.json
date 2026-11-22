@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Inbox",
-    "description": "A Telegram bot for DSH: messages land in the history, the agent can read them and reply in your name, and the plugin page keeps the bot token, the chat whitelist, the current session and a command cheat sheet. An allow-listed chat can control DSH with /sessions, /use N, /ask, /steer, /new and /cancel — nobody is allowed by default until a chat is added. The bot token is kept in the DSH credential store under TELEGRAM_BOT_TOKEN and never reaches the browser. Find it under Plugins.",
+    "description": "A Telegram bot for DSH: messages land in the history, the agent can read them and reply in your name, and the plugin page keeps the bot token, the chat whitelist, the current session and a command cheat sheet. An allow-listed chat can control DSH with /sessions, /use N, /ask, /steer, /new and /cancel — nobody is allowed by default until a chat is added. The bot token is kept in the DSH credential store under TELEGRAM_BOT_TOKEN and never reaches the browser. Commands can be shared between devices: one device listens to Telegram and any device executes each command exactly once with the reply in the chat. Find it under Plugins.",
     "detail": "docs/DETAIL.md"
   }
 }

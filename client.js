@@ -29,6 +29,8 @@ window.__ModuleLoader__.load({
     const ALLOWLIST_PATH = '/api/dsh-inbox/allowlist';
     const SESSION_RESET_PATH = '/api/dsh-inbox/session/reset';
     const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh';
+    const QUEUE_LISTENER_PATH = '/api/dsh-inbox/queue/listener';
+    const QUEUE_SYNC_PATH = '/api/dsh-inbox/queue/sync';
     const REFRESH_MS = 4000;
 
     const en = {
@@ -137,6 +139,37 @@ window.__ModuleLoader__.load({
       menuButtons: 'Keyboard:',
       menuButtonsValue: '📋 Сессии · ➕ Новая сессия · ⏹ Прервать · ℹ️ Состояние · ❓ Помощь',
       menuUpdatedAt: 'Last published:',
+      queueTitle: 'Shared queue',
+      queueConfigured: 'configured',
+      queueNotConfigured: 'not configured',
+      queueDevice: 'This device:',
+      queueRole: 'Role:',
+      queueListenerOn: 'listens to Telegram',
+      queueListenerOff: 'executor',
+      queueSwitching: 'Switching…',
+      queueListen: 'Listen to Telegram here',
+      queueUnlisten: 'Stop listening here',
+      queueListenerDone: 'This device listens to Telegram.',
+      queueListenerOffDone: 'Listening is off on this device.',
+      queueListenerFailed: 'Could not switch the listener.',
+      queue409: 'Only one device may listen to the bot: a second getUpdates consumer gets 409 Conflict. Turn listening off on the other device first.',
+      queueSync: 'Sync now',
+      queueSyncing: 'Syncing…',
+      queueSynced: 'Queue synchronized.',
+      queueSyncFailed: 'Could not sync the queue.',
+      queueNew: 'new',
+      queueInProgress: 'in progress',
+      queueDone: 'done',
+      queueCounts: 'Commands:',
+      queueWho: 'executing now:',
+      queueOther: 'Another device listens:',
+      queueDevices: 'Devices:',
+      queueLastSync: 'Last sync:',
+      queueNever: 'never',
+      queueRemote: 'Repository:',
+      queueInline: 'Queue is off: commands run on this device right away. Fill "remote" in ~/.dsh/dsh-sync.json to share them between devices.',
+      queueHint: 'Commands are kept in the git branch inbox of the same repository as dsh-sync. Every device needs the bot token in its own vault; exactly one device is the listener.',
+      queueNoToken: 'Save the bot token first.',
     };
 
     const ru = {
@@ -245,6 +278,37 @@ window.__ModuleLoader__.load({
       menuButtons: 'Клавиатура:',
       menuButtonsValue: '📋 Сессии · ➕ Новая сессия · ⏹ Прервать · ℹ️ Состояние · ❓ Помощь',
       menuUpdatedAt: 'Последняя публикация:',
+      queueTitle: 'Общая очередь',
+      queueConfigured: 'настроена',
+      queueNotConfigured: 'не настроена',
+      queueDevice: 'Это устройство:',
+      queueRole: 'Роль:',
+      queueListenerOn: 'слушает Telegram',
+      queueListenerOff: 'исполнитель',
+      queueSwitching: 'Переключаем…',
+      queueListen: 'Слушать Telegram здесь',
+      queueUnlisten: 'Выключить приём здесь',
+      queueListenerDone: 'Это устройство слушает Telegram.',
+      queueListenerOffDone: 'Приём на этом устройстве выключен.',
+      queueListenerFailed: 'Не удалось переключить слушателя.',
+      queue409: 'Telegram может слушать только одно устройство: второй getUpdates получит 409 Conflict. Сначала выключите приём на другом устройстве.',
+      queueSync: 'Синхронизировать сейчас',
+      queueSyncing: 'Синхронизируем…',
+      queueSynced: 'Очередь синхронизирована.',
+      queueSyncFailed: 'Не удалось синхронизировать очередь.',
+      queueNew: 'новых',
+      queueInProgress: 'в работе',
+      queueDone: 'готово',
+      queueCounts: 'Команды:',
+      queueWho: 'выполняет сейчас:',
+      queueOther: 'Слушает другое устройство:',
+      queueDevices: 'Устройства:',
+      queueLastSync: 'Последняя синхронизация:',
+      queueNever: 'не было',
+      queueRemote: 'Репозиторий:',
+      queueInline: 'Очередь не настроена: команды выполняются на этом устройстве сразу. Заполните «remote» в ~/.dsh/dsh-sync.json, чтобы делить их между устройствами.',
+      queueHint: 'Команды складываются в git-ветку inbox того же репозитория, что и dsh-sync. На каждом устройстве нужен свой токен бота в сейфе; слушателем может быть только одно устройство.',
+      queueNoToken: 'Сначала сохраните токен бота.',
     };
 
     /**
@@ -616,6 +680,36 @@ window.__ModuleLoader__.load({
           }
         });
 
+        const setListener = enabled => run('queue-listener', async () => {
+          try {
+            const payload = await call(QUEUE_LISTENER_PATH, { enabled });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true
+                ? (payload.message ?? (enabled ? t('queueListenerDone') : t('queueListenerOffDone')))
+                : (payload?.message ?? t('queueListenerFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('queueListenerFailed') });
+          }
+        });
+
+        const syncQueue = () => run('queue-sync', async () => {
+          try {
+            const payload = await call(QUEUE_SYNC_PATH, {});
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('queueSynced')) : (payload?.message ?? t('queueSyncFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('queueSyncFailed') });
+          }
+        });
+
         const configured = snapshot?.configured === true;
         const enabled = snapshot?.enabled === true;
         const messages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
@@ -645,6 +739,18 @@ window.__ModuleLoader__.load({
         const menuOk = menu.ok === true;
         const menuAt = Number(menu.at) > 0 ? formatTime(new Date(Number(menu.at)).toISOString()) : '';
         const menuCommands = Array.isArray(menu.commands) ? menu.commands.join(' · ') : '';
+        const queueInfo = snapshot?.queue ?? {};
+        const queueConfigured = queueInfo.configured === true;
+        const queueCounts = queueInfo.counts ?? {};
+        const queueDevices = Array.isArray(queueInfo.devices) ? queueInfo.devices : [];
+        const queueInProgress = Array.isArray(queueInfo.inProgress) ? queueInfo.inProgress : [];
+        const queueOther = queueInfo.otherListener ?? null;
+        const queueLastSync = Number(queueInfo.lastSyncAt) > 0
+          ? formatTime(new Date(Number(queueInfo.lastSyncAt)).toISOString())
+          : '';
+        const queueDeviceName = queueInfo.device?.name ?? snapshot?.device?.name ?? '';
+        const queueDeviceId = queueInfo.device?.id ?? snapshot?.device?.id ?? '';
+        const queueListener = queueInfo.listener === true;
         const commandLines = [
           t('cmdHelp'),
           t('cmdStatus'),
@@ -883,6 +989,79 @@ window.__ModuleLoader__.load({
               }, busy === 'menu' ? t('menuUpdating') : t('menuUpdate')),
             ),
             h('p', { className: 'dsh-inbox-hint' }, t('menuHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('span', { className: 'dsh-inbox-label' }, t('queueTitle')),
+              h('span', { className: queueConfigured ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+                queueConfigured ? t('queueConfigured') : t('queueNotConfigured')),
+              queueConfigured
+                ? h('span', { className: queueListener ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
+                    queueListener ? t('queueListenerOn') : t('queueListenerOff'))
+                : null,
+            ),
+            h('p', { className: 'dsh-inbox-hint' },
+              `${t('queueDevice')} ${queueDeviceName === '' ? '—' : `${queueDeviceName} (${queueDeviceId.slice(0, 8)})`}`),
+            queueConfigured
+              ? h('p', { className: 'dsh-inbox-hint' }, `${t('queueRemote')} ${queueInfo.remote ?? ''}`)
+              : h('p', { className: 'dsh-inbox-hint' }, t('queueInline')),
+            queueConfigured
+              ? h(
+                  'div',
+                  { className: 'dsh-inbox-row' },
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-inbox-button',
+                    disabled: busy !== '',
+                    onClick: () => void setListener(!queueListener),
+                  }, busy === 'queue-listener' ? t('queueSwitching') : (queueListener ? t('queueUnlisten') : t('queueListen'))),
+                  h('button', {
+                    type: 'button',
+                    className: 'dsh-inbox-button is-primary',
+                    disabled: busy !== '',
+                    onClick: () => void syncQueue(),
+                  }, busy === 'queue-sync' ? t('queueSyncing') : t('queueSync')),
+                )
+              : null,
+            queueConfigured
+              ? h('p', { className: 'dsh-inbox-hint' },
+                  `${t('queueCounts')} ${t('queueNew')}: ${queueCounts.new ?? 0} · ${t('queueInProgress')}: ${queueCounts.inProgress ?? 0} · ${t('queueDone')}: ${queueCounts.done ?? 0}`)
+              : null,
+            queueConfigured && queueInProgress.length > 0
+              ? h(
+                  'div',
+                  null,
+                  h('p', { className: 'dsh-inbox-hint' }, t('queueWho')),
+                  ...queueInProgress.map((item, index) => h('p', { key: `live-${index}`, className: 'dsh-inbox-hint' },
+                    `- ${item.deviceName}: ${item.text}`)),
+                )
+              : null,
+            queueOther !== null
+              ? h('p', { className: 'dsh-inbox-error' }, `${t('queueOther')} ${queueOther.deviceName}`)
+              : null,
+            queueConfigured && queueDevices.length > 0
+              ? h(
+                  'div',
+                  null,
+                  h('p', { className: 'dsh-inbox-hint' }, t('queueDevices')),
+                  ...queueDevices.map((entry, index) => h('p', { key: `dev-${index}`, className: 'dsh-inbox-hint' },
+                    `- ${entry.deviceName} (${entry.listener === true ? t('queueListenerOn') : t('queueListenerOff')})`)),
+                )
+              : null,
+            queueConfigured
+              ? h('p', { className: 'dsh-inbox-hint' },
+                  `${t('queueLastSync')} ${queueLastSync === '' ? t('queueNever') : queueLastSync}`)
+              : null,
+            queueConfigured
+              ? h('p', { className: (queueInfo.lastError ?? '') !== '' ? 'dsh-inbox-error' : 'dsh-inbox-hint' },
+                  `${t('lastError')} ${queueInfo.lastError || t('noError')}`)
+              : null,
+            queueConfigured ? h('p', { className: 'dsh-inbox-hint' }, t('queue409')) : null,
+            h('p', { className: 'dsh-inbox-hint' }, t('queueHint')),
           ),
           h(
             'div',
