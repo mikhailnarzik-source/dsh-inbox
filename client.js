@@ -1,11 +1,17 @@
 ﻿/**
  * Browser half of `dsh-inbox` — «Входящие».
  *
- * Contributes one section to the plugin page: the token field (write-only, the
+ * Contributes the plugin settings page: the token field (write-only, the
  * literal goes straight into the DSH credential store), the token check, the
  * receive switch, the last messages, a reply field and a history reset. While
- * the section is open it refreshes every four seconds; the interval and the
+ * the page is open it refreshes every four seconds; the interval and the
  * credential listener are removed when the page closes.
+ *
+ * The same page is used twice: as the `plugins.detail.section` inside the plugin
+ * manager and as the plugin's own `main` panel (`plugin-inbox`) in the left rail,
+ * so a click on the rail row shows only the plugin controls. The rail row itself
+ * (`sidebar.panellist`, id `plugin-inbox`) exists only while the panel is pinned
+ * in the shared dsh-polish state; unpinned panels wait in the “Ещё” menu.
  *
  * The token never reaches this module: `credentials.describe` answers only
  * whether one is stored, `credentials.set` is write-only, and the state route
@@ -36,8 +42,23 @@ window.__ModuleLoader__.load({
     const SECURITY_PATH = '/api/dsh-inbox/security';
     const REFRESH_MS = 4000;
 
+    /** id плагина, его main-панели и строки левой панели: `plugin-<id>`. */
+    const PLUGIN_ID = 'inbox';
+    const PANEL_ID = 'plugin-' + PLUGIN_ID;
+
+    /** Порядок строки в левой панели: 20 + индекс из общего списка панелей. */
+    const PANEL_ORDER = 27;
+
+    /** Общее состояние панелей ведёт dsh-polish; здесь только чтение. */
+    const PANEL_VISIBILITY_KEY = 'dsh-polish:panel-visibility';
+    const PANELS_CHANGED_EVENT = 'dsh-polish:panels-changed';
+
+    /** Эмодзи строки левой панели — та же иконка, что в шапке страницы. */
+    const PANEL_EMOJI = '📥';
+
     const en = {
       pageTitle: 'Inbox',
+      panelLabel: 'Inbox',
       pageSubtitle: 'Telegram bot, whitelist and DSH session control from the plugin page',
       refresh: 'Refresh',
       statusConnected: '✅ connected',
@@ -209,6 +230,7 @@ window.__ModuleLoader__.load({
 
     const ru = {
       pageTitle: 'Входящие',
+      panelLabel: 'Входящие',
       pageSubtitle: 'Telegram-бот, белый список и управление сессиями DSH со страницы плагина',
       refresh: 'Обновить',
       statusConnected: '✅ подключён',
@@ -465,6 +487,70 @@ window.__ModuleLoader__.load({
 @media (max-width:900px){.dsh-inbox{padding:20px 18px 36px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}}
 @media (max-width:640px){.dsh-inbox{padding:16px 14px 28px !important}.dsh-inbox-card{padding:12px}.dsh-inbox-row{gap:6px}.dsh-inbox-header-actions .dsh-inbox-button{flex:1 1 auto}.dsh-inbox-chat{max-width:100%}.dsh-inbox-button{white-space:normal;text-align:center}}
 `;
+
+    /**
+     * Хранилище браузера, если оно есть: модуль грузится и там, где
+     * `localStorage` недоступен (тесты, окружение без окна), поэтому любое
+     * обращение обёрнуто.
+     * @returns хранилище или `null`.
+     */
+    function panelStorage() {
+      try {
+        if (typeof window === 'undefined') return null;
+        return window.localStorage ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    /**
+     * Видимость и закрепление панели из общего состояния dsh-polish
+     * (`{visible: string[], pinned: string[]}`). Пока состояния нет, панель
+     * видима и закреплена — так же, как в dsh-polish по умолчанию.
+     * @returns `{visible, pinned}`.
+     */
+    function readPanelState() {
+      const fallback = { visible: true, pinned: true };
+      const storage = panelStorage();
+      if (storage === null) return fallback;
+      try {
+        const raw = storage.getItem(PANEL_VISIBILITY_KEY);
+        if (raw === null || raw === '') return fallback;
+        const parsed = JSON.parse(raw);
+        const visible = Array.isArray(parsed?.visible) ? parsed.visible.includes(PLUGIN_ID) : true;
+        const pinned = Array.isArray(parsed?.pinned) ? parsed.pinned.includes(PLUGIN_ID) : visible;
+        return { visible, pinned: visible && pinned };
+      } catch {
+        return fallback;
+      }
+    }
+
+    /**
+     * Иконка строки в левой панели: эмодзи плагина. Хост передаёт размер,
+     * поэтому рисуем в нём, а не в фиксированном.
+     * @param props - `{size}` от хоста.
+     */
+    function PanelIcon(props) {
+      const requested = Number(props?.size);
+      const size = Number.isFinite(requested) && requested > 0 ? requested : 16;
+      return h(
+        'span',
+        {
+          'data-dsh-inbox-panel-icon': PLUGIN_ID,
+          'aria-hidden': 'true',
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: size,
+            height: size,
+            fontSize: Math.round(size * 0.95),
+            lineHeight: 1,
+          },
+        },
+        PANEL_EMOJI,
+      );
+    }
 
     /** Local time for a stored UTC timestamp. */
     function formatTime(at) {
@@ -1475,11 +1561,98 @@ window.__ModuleLoader__.load({
       } catch (error) {
         console.error('[dsh-inbox] секция страницы недоступна:', error);
       }
+
+      /**
+       * Main-панель плагина. Это та же страница настроек, что и секция
+       * `plugins.detail.section`, но без блоков плагин-менеджера («Описание»,
+       * «Источник», «Версия»): клик по строке в левой панели показывает только
+       * элементы управления плагина.
+       */
+      function InboxPanel() {
+        return h(InboxPage, {});
+      }
+
+      try {
+        ctx.slots.inject('main', () =>
+          ctx.slots.register({ name: 'main', key: PANEL_ID }, InboxPanel),
+        );
+      } catch (error) {
+        console.error('[dsh-inbox] main-панель недоступна:', error);
+      }
+
+      // Строку левой панели держим только у закреплённой панели. Откреплённая
+      // живёт в меню «Ещё», откуда её возвращают закреплением; об изменениях
+      // сообщает событие dsh-polish, а состояние всегда перечитываем из
+      // localStorage — это единственный источник правды.
+      let disposeSidebar = null;
+
+      const mountSidebar = () => {
+        if (disposeSidebar !== null) return;
+        try {
+          const dispose = ctx.slots.inject('sidebar.panellist', () =>
+            ctx.slots.register(
+              {
+                name: 'sidebar.panellist',
+                id: PANEL_ID,
+                order: PANEL_ORDER,
+                label: () => t('panelLabel'),
+              },
+              PanelIcon,
+            ),
+          );
+          disposeSidebar = typeof dispose === 'function' ? dispose : () => {};
+        } catch (error) {
+          disposeSidebar = null;
+          console.error('[dsh-inbox] строка в левой панели недоступна:', error);
+        }
+      };
+
+      const unmountSidebar = () => {
+        const dispose = disposeSidebar;
+        if (dispose === null) return;
+        disposeSidebar = null;
+        try {
+          dispose();
+        } catch (error) {
+          console.error('[dsh-inbox] не удалось снять строку в левой панели:', error);
+        }
+      };
+
+      const syncSidebar = () => {
+        if (readPanelState().pinned) mountSidebar();
+        else unmountSidebar();
+      };
+
+      ctx.effect(() => {
+        syncSidebar();
+        if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+          return () => unmountSidebar();
+        }
+        const onChange = () => syncSidebar();
+        window.addEventListener(PANELS_CHANGED_EVENT, onChange);
+        return () => {
+          try {
+            window.removeEventListener(PANELS_CHANGED_EVENT, onChange);
+          } catch {
+            // окно уже закрывается — снимать слушатель не нужно
+          }
+          unmountSidebar();
+        };
+      }, 'dsh-inbox: панель в левой панели');
     }
 
     exports.apply = apply;
     exports.inject = ['slots', 'locale', 'remote', 'remote.credentials'];
     exports.NS = NS;
+    exports.__test = {
+      PLUGIN_ID,
+      PANEL_ID,
+      PANEL_ORDER,
+      PANEL_VISIBILITY_KEY,
+      PANELS_CHANGED_EVENT,
+      readPanelState,
+      PanelIcon,
+    };
     return module.exports;
   },
 });

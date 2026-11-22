@@ -182,8 +182,9 @@ test('client.js: словари en и ru с одинаковым набором 
 test('client.js: регистрирует секцию plugins.detail.section для dsh-inbox', async () => {
   const { injected, registered } = await loadClient()
   assert.ok(injected.includes('plugins.detail.section'), 'секция объявлена через slots.inject')
-  assert.equal(registered.length, 1)
-  const { options, component } = registered[0]
+  const detail = registered.filter(entry => entry.options.name === 'plugins.detail.section')
+  assert.equal(detail.length, 1)
+  const { options, component } = detail[0]
   assert.equal(options.name, 'plugins.detail.section')
   assert.equal(options.id, 'dsh-inbox-detail')
   assert.equal(options.locale, 'inbox')

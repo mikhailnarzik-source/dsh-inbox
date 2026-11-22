@@ -1,6 +1,6 @@
 {
   "name": "dsh-inbox",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "description": "Inbox (Входящие): a Telegram bot for DeepSeek Harness — receive messages, keep the history in DSH, answer from the plugin page or through agent tools, control DSH sessions from an allow-listed chat with the native Telegram menu, and share one command queue between devices over git.",
   "type": "module",
