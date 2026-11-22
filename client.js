@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Browser half of `dsh-inbox` — «Входящие».
  *
  * Contributes one section to the plugin page: the token field (write-only, the
@@ -407,21 +407,22 @@ window.__ModuleLoader__.load({
 .dsh-inbox-pill.is-ok{border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 14%,transparent);color:var(--dsw-alias-state-success-primary)}
 .dsh-inbox-pill.is-warn{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,transparent);color:var(--dsw-alias-state-warn-primary)}
 .dsh-inbox-pill.is-bad{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 12%,transparent);color:var(--dsw-alias-state-error-primary)}
-.dsh-inbox-input{flex:1 1 260px;min-width:200px;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px}
+.dsh-inbox-input{flex:1 1 260px;min-width:0;max-width:100%;box-sizing:border-box;height:34px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px}
 .dsh-inbox-input::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dsh-inbox-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsh-inbox-input:disabled{opacity:.6}
-.dsh-inbox-reply{flex:1 1 260px;min-width:200px;box-sizing:border-box;min-height:36px;max-height:120px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:20px;resize:vertical}
+.dsh-inbox-reply{flex:1 1 260px;min-width:0;max-width:100%;box-sizing:border-box;min-height:36px;max-height:120px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:20px;resize:vertical}
 .dsh-inbox-reply:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dsh-inbox-button{appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--dsw-alias-border-l4);border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
-.dsh-inbox-button:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
-.dsh-inbox-button:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent)}
+.dsh-inbox-button{appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--dsw-alias-border-l4);border-radius:10px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-weight:600;line-height:1;white-space:nowrap;min-width:0;max-width:100%;cursor:pointer;transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.dsh-inbox-button.is-small{height:32px;padding:0 12px;font-size:12px;border-radius:10px}
+.dsh-inbox-button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(128,128,128,.12))}
+.dsh-inbox-button:active:not(:disabled){background:var(--dsw-alias-interactive-bg-active,rgba(128,128,128,.18))}
 .dsh-inbox-button:disabled{opacity:.55;cursor:default}
-.dsh-inbox-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.dsh-inbox-button.is-primary{border-color:transparent;background:var(--dsw-alias-brand-primary);color:#fff}
-.dsh-inbox-button.is-primary:hover:not(:disabled){background:var(--dsw-alias-brand-primary);filter:brightness(1.06)}
-.dsh-inbox-button.is-danger{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:transparent;color:var(--dsw-alias-state-error-primary)}
-.dsh-inbox-button.is-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.dsh-inbox-button:focus-visible{outline:2px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent);outline-offset:2px}
+.dsh-inbox-button.is-primary{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent);color:var(--dsw-alias-brand-primary)}
+.dsh-inbox-button.is-primary:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,transparent)}
+.dsh-inbox-button.is-danger{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 50%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 16%,transparent);color:var(--dsw-alias-state-error-primary)}
+.dsh-inbox-button.is-danger:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 24%,transparent)}
 .dsh-inbox-switch{position:relative;box-sizing:border-box;flex:none;width:38px;height:22px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .dsh-inbox-switch.is-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary)}
 .dsh-inbox-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
@@ -437,7 +438,7 @@ window.__ModuleLoader__.load({
 .dsh-inbox-arrow{font-size:11.5px}
 .dsh-inbox-chat{font-weight:600;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
 .dsh-inbox-time{margin-left:auto;font-variant-numeric:tabular-nums}
-.dsh-inbox-text{white-space:pre-wrap;word-break:break-word}
+.dsh-inbox-text{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
 .dsh-inbox-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-secondary)}
 .dsh-inbox-list li{padding:2px 0;border-radius:6px}
 .dsh-inbox-list li:hover{color:var(--dsw-alias-label-primary)}
@@ -456,12 +457,13 @@ window.__ModuleLoader__.load({
 .dsh-inbox-chip:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
 .dsh-inbox-chip.is-blocked{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent)}
 .dsh-inbox-chip-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dsh-inbox-chip .dsh-inbox-button{height:24px;padding:0 8px;font-size:11.5px;border-radius:999px}
-.dsh-inbox-command{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.dsh-inbox-chip .dsh-inbox-button{height:28px;padding:0 10px;font-size:11.5px;border-radius:8px}
+.dsh-inbox-command{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
 .dsh-inbox-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base)}
 .dsh-inbox-session:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
 .dsh-inbox-session-name{font-weight:600}
-@media (max-width:760px){.dsh-inbox{padding:18px 16px 32px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}}
+@media (max-width:900px){.dsh-inbox{padding:20px 18px 36px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}}
+@media (max-width:640px){.dsh-inbox{padding:16px 14px 28px !important}.dsh-inbox-card{padding:12px}.dsh-inbox-row{gap:6px}.dsh-inbox-header-actions .dsh-inbox-button{flex:1 1 auto}.dsh-inbox-chat{max-width:100%}.dsh-inbox-button{white-space:normal;text-align:center}}
 `;
 
     /** Local time for a stored UTC timestamp. */
@@ -973,7 +975,7 @@ window.__ModuleLoader__.load({
                 enabled ? t('pollingOn') : t('pollingOff')),
               h('button', {
                 type: 'button',
-                className: 'dsh-inbox-button',
+                className: 'dsh-inbox-button is-small',
                 onClick: () => void refresh(),
               }, t('refresh')),
             ),

@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+﻿import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.5.1 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.5.2 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.5.1')
+  assert.equal(manifest.version, '0.5.2')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')

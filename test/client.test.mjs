@@ -269,7 +269,8 @@ test('client.js: страница оформлена по единому сти�
   assert.match(css, /max-width:960px/)
   assert.match(css, /margin:0 auto/)
   assert.match(css, /padding:24px 28px 40px/)
-  assert.match(css, /@media \(max-width:760px\)/)
+  assert.match(css, /@media \(max-width:900px\)/)
+  assert.match(css, /@media \(max-width:640px\)/)
   assert.match(css, /--dsw-alias-bg-layer-1/)
   assert.match(css, /border-radius:14px/)
   assert.match(css, /height:36px/)
@@ -294,7 +295,8 @@ test('client.js: страница оформлена по единому сти�
   assert.ok(pills.length >= 2, 'чипы статуса в шапке')
   assert.match(css, /\.dsh-inbox-pill::before/)
 
-  const refreshButton = all.find(node => node.props?.className === 'dsh-inbox-button'
+  const refreshButton = all.find(node => typeof node.props?.className === 'string'
+    && node.props.className.includes('dsh-inbox-button')
     && texts(node).join('') === 'inbox.refresh')
   assert.ok(refreshButton, 'кнопка «Обновить» в шапке')
   assert.equal(typeof refreshButton.props.onClick, 'function', 'обновление подключено')
@@ -315,4 +317,54 @@ test('client.js: страница оформлена по единому сти�
   const empty = all.find(node => node.props?.className === 'dsh-inbox-empty')
   assert.ok(empty, 'пустое состояние истории')
   assert.ok(texts(empty).join(' ').includes('inbox.historyEmpty'))
+})
+
+test('client.js: кнопки — единая система, без белого на белом и fixed width', async () => {
+  const { registered } = await loadClient()
+  const { component } = registered[0]
+  const tree = render(component({ subject: { kind: 'bundle', pkg: { name: 'dsh-inbox' } } }))
+  const all = elements(tree)
+  const style = all.find(node => node.type === 'style')
+  assert.ok(style, 'страница подключает свой стиль')
+  const css = String(style.props.children)
+
+  // Геометрия и типографика кнопок — по спеке.
+  assert.match(css, /\.dsh-inbox-button\{[^}]*box-sizing:border-box/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*display:inline-flex/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*height:36px/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*padding:0 14px/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*border-radius:10px/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*font-size:12\.5px/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*font-weight:600/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*white-space:nowrap/)
+  assert.match(css, /\.dsh-inbox-button\{[^}]*min-width:0/)
+  assert.match(css, /\.dsh-inbox-button\.is-small\{height:32px/)
+  assert.match(css, /\.dsh-inbox-chip \.dsh-inbox-button\{height:28px/)
+  assert.match(css, /\.dsh-inbox-button:disabled\{opacity:\.55/)
+  assert.match(css, /\.dsh-inbox-button:focus-visible\{outline:2px solid color-mix/)
+
+  // Варианты: мягкие заливки из токенов, никакого белого текста на белом.
+  assert.match(css, /\.dsh-inbox-button\.is-primary\{[^}]*color-mix\(in srgb,var\(--dsw-alias-brand-primary\) 18%,transparent\)/)
+  assert.match(css, /\.dsh-inbox-button\.is-primary\{[^}]*color:var\(--dsw-alias-brand-primary\)/)
+  assert.doesNotMatch(css, /\.dsh-inbox-button\.is-primary\{[^}]*color:#fff/)
+  assert.doesNotMatch(css, /\.dsh-inbox-button\.is-primary\{[^}]*background:var\(--dsw-alias-brand-primary\)/)
+  assert.match(css, /\.dsh-inbox-button\.is-primary:hover:not\(:disabled\)\{background:color-mix\(in srgb,var\(--dsw-alias-brand-primary\) 28%,transparent\)/)
+  assert.match(css, /\.dsh-inbox-button\.is-danger\{[^}]*color-mix\(in srgb,var\(--dsw-alias-state-error-primary\) 16%,transparent\)/)
+  assert.match(css, /\.dsh-inbox-button:hover:not\(:disabled\)\{background:var\(--dsw-alias-interactive-bg-hover/)
+  assert.doesNotMatch(css, /var\(--dsw-alias-button-primary-fill\)/, 'нет старой сплошной заливки brand')
+
+  // В шапке — маленькая кнопка 28/32, не 36.
+  const header = all.find(node => node.type === 'header')
+  const headerButton = elements(header).find(node => node.type === 'button')
+  assert.ok(headerButton, 'кнопка «Обновить» в шапке')
+  assert.match(headerButton.props.className, /is-small/)
+
+  // Адаптив: никаких фиксированных ширин полей, медиа 900/640, переносы.
+  assert.match(css, /\.dsh-inbox-input\{[^}]*min-width:0/)
+  assert.match(css, /\.dsh-inbox-reply\{[^}]*min-width:0/)
+  assert.doesNotMatch(css, /min-width:200px/)
+  assert.match(css, /\.dsh-inbox-text\{[^}]*overflow-wrap:anywhere/)
+  assert.match(css, /\.dsh-inbox-row\{[^}]*flex-wrap:wrap/)
+  assert.match(css, /@media \(max-width:900px\)/)
+  assert.match(css, /@media \(max-width:640px\)\{\.dsh-inbox\{padding:16px 14px 28px/)
 })
