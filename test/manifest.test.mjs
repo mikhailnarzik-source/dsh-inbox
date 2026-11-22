@@ -16,10 +16,10 @@ async function exists(relative) {
   await access(join(ROOT, relative))
 }
 
-test('package.json: bundle-патч, клиент, версия 0.2.0 и экспорты ресурсов', async () => {
+test('package.json: bundle-патч, клиент, версия 0.3.0 и экспорты ресурсов', async () => {
   const manifest = await readJson('package.json')
   assert.equal(manifest.name, 'dsh-inbox')
-  assert.equal(manifest.version, '0.2.0')
+  assert.equal(manifest.version, '0.3.0')
   assert.equal(manifest.type, 'module')
   assert.equal(manifest.dsh?.bundle?.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh?.client?.platform, 'web')
@@ -83,6 +83,7 @@ test('ресурсы на месте: index.js, client.js, lib, icon.svg, README
     'lib/commands.mjs',
     'lib/replies.mjs',
     'lib/access.mjs',
+    'lib/menu.mjs',
   ]) {
     await exists(relative)
   }
@@ -106,6 +107,7 @@ test('index.js объявляет имя, inject, apply и не содержит
     '/api/dsh-inbox/messages/clear',
     '/api/dsh-inbox/allowlist',
     '/api/dsh-inbox/session/reset',
+    '/api/dsh-inbox/menu/refresh',
   ]) {
     assert.ok(source.includes(path), `маршрут ${path} объявлен`)
   }
@@ -137,6 +139,7 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(readme, /\/steer/)
   assert.match(readme, /\/new/)
   assert.match(readme, /\/cancel/)
+  assert.match(readme, /Меню Telegram/)
   const detail = await readFile(join(ROOT, 'docs', 'DETAIL.md'), 'utf8')
   assert.match(detail, /@BotFather/)
   assert.match(detail, /Что это и зачем/)
@@ -149,6 +152,7 @@ test('README и docs/DETAIL.md: инструкция для новичка, бе
   assert.match(detail, /Белый список/)
   assert.match(detail, /Команды бота/)
   assert.match(detail, /Управление сессиями/)
+  assert.match(detail, /Меню Telegram/)
   for (const text of [readme, detail]) {
     assert.equal(text.includes('\uFFFD'), false, 'нет битых символов')
   }

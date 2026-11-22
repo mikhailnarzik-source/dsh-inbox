@@ -309,7 +309,7 @@ test('polling: разрешённый чат попадает в историю,
     const mock = telegramMock({
       getUpdates: body => {
         calls += 1
-        assert.deepEqual(body.allowed_updates, ['message'])
+        assert.deepEqual(body.allowed_updates, ['message', 'callback_query'])
         if (calls === 1) return Response.json({ ok: true, result: [update(100, 555, '/help')] })
         return Response.json({ ok: true, result: [] })
       },
@@ -375,8 +375,15 @@ test('polling: чужой чат — сообщение с blocked, отказ �
       assert.equal(mock.sent.length, 1, 'отказ отправлен один раз, командных ответов нет')
       assert.match(mock.sent[0].text, /⛔ Нет доступа/)
       assert.equal(state.chats[0].allowed, false)
-      const file = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'))
-      assert.equal(file.messages.length, 2)
+      const saved = await waitFor(async () => {
+        try {
+          const file = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'))
+          return file.messages.length === 2
+        } catch {
+          return false
+        }
+      })
+      assert.equal(saved, true, 'заблокированные сообщения сохранены в state.json')
       await callRoute(ctx, POLLING_PATH, { enabled: false })
     } finally {
       mock.restore()

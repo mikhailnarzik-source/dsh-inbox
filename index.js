@@ -32,8 +32,20 @@ import { createTools } from './lib/tools.mjs'
 import { SessionsError, createSessionsGateway } from './lib/sessions.mjs'
 import { allowChat, createDenyLimiter, denyChat, isChatAllowed } from './lib/access.mjs'
 import { executeCommand, parseIncoming } from './lib/commands.mjs'
-import { REPLIES, formatAck } from './lib/replies.mjs'
-import { messageFromUpdate } from './lib/messages.mjs'
+import { MENU_TEXTS, REPLIES, formatAck, helpText, sessionLabel, statusText } from './lib/replies.mjs'
+import {
+  COMMANDS_MENU,
+  MENU_BUTTON_ACTIONS,
+  MENU_VERSION,
+  helpInlineKeyboard,
+  parseCallbackData,
+  replyKeyboard,
+  sessionInlineKeyboard,
+  sessionsInlineKeyboard,
+  shouldRefreshCommands,
+  statusInlineKeyboard,
+} from './lib/menu.mjs'
+import { callbackFromUpdate, messageFromUpdate } from './lib/messages.mjs'
 
 /** Plugin name; also the id of the bundle row in `cordis.patch.yml`. */
 export const name = 'dsh-inbox'
@@ -79,6 +91,9 @@ const ALLOWLIST_PATH = '/api/dsh-inbox/allowlist'
 
 /** Route the page calls to forget the session routed to one chat. */
 const SESSION_RESET_PATH = '/api/dsh-inbox/session/reset'
+
+/** Route the page calls to re-publish the Telegram command menu. */
+const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh'
 
 /**
  * Build one JSON response.
@@ -210,7 +225,7 @@ export function apply(ctx) {
    * the Inbox history as an outgoing message.
    * @param chatId - Telegram chat id.
    * @param text - message text.
-   * @param options - `{ chatTitle?, record? }`.
+   * @param options - `{ chatTitle?, record?, replyMarkup? }`.
    * @returns the Bot API result.
    */
   async function sendTelegram(chatId, text, options = {}) {
@@ -221,7 +236,7 @@ export function apply(ctx) {
     telegram.setToken(token)
     let result
     try {
-      result = await telegram.sendMessage({ chatId, text })
+      result = await telegram.sendMessage({ chatId, text, replyMarkup: options.replyMarkup })
     } catch (error) {
       throw new Error(redact(describeTelegramError(error, token), token))
     }
@@ -262,6 +277,8 @@ export function apply(ctx) {
       const username = typeof me?.username === 'string' ? me.username.trim() : ''
       update({ botUsername: username })
       await persist()
+      // A working token is the natural moment to publish the «/» menu.
+      await refreshCommands()
       return {
         ok: true,
         code: 'accepted',
@@ -313,6 +330,66 @@ export function apply(ctx) {
       chatId: target,
       chatTitle: title,
       messageId: result !== null && typeof result === 'object' ? result.message_id : undefined,
+    }
+  }
+
+  /**
+   * Publish the Telegram «/» command list, at most once a day per list version.
+   * Failures are returned, never thrown: a menu problem must not stop polling.
+   * @param force - ignore the cache (the page's button, a successful token check).
+   * @returns `{ ok, cached, version, at, commands, message }`.
+   */
+  async function refreshCommands(force = false) {
+    const token = await resolveToken()
+    if (token === '') {
+      return {
+        ok: false,
+        code: 'missing',
+        cached: false,
+        version: MENU_VERSION,
+        at: 0,
+        commands: COMMANDS_MENU.length,
+        message: 'Токен Telegram не сохранён: меню команд не отправлено.',
+      }
+    }
+    const now = Date.now()
+    if (!force && !shouldRefreshCommands(state.commandsMenu, now)) {
+      return {
+        ok: true,
+        cached: true,
+        version: MENU_VERSION,
+        at: state.commandsMenu.at,
+        commands: COMMANDS_MENU.length,
+        message: 'Меню команд уже опубликовано.',
+      }
+    }
+    telegram.setToken(token)
+    try {
+      await telegram.setMyCommands(COMMANDS_MENU, { type: 'default' })
+      update({ commandsMenu: { version: MENU_VERSION, at: now, ok: true } })
+      await persist()
+      return {
+        ok: true,
+        cached: false,
+        version: MENU_VERSION,
+        at: now,
+        commands: COMMANDS_MENU.length,
+        message: 'Меню команд обновлено в Telegram.',
+      }
+    } catch (error) {
+      update({ commandsMenu: { version: '', at: now, ok: false } })
+      await persist()
+      const message = redact(describeTelegramError(error, token), token)
+      console.warn('[dsh-inbox] не удалось обновить меню команд:', message)
+      return {
+        ok: false,
+        code: 'failed',
+        cached: false,
+        version: MENU_VERSION,
+        at: now,
+        commands: COMMANDS_MENU.length,
+        message,
+      }
     }
   }
 
@@ -419,15 +496,33 @@ export function apply(ctx) {
   }
 
   /**
+   * Dependencies every command receives.
+   */
+  const commandDeps = {
+    getState: () => state,
+    save: async patch => {
+      update(patch)
+      await persist()
+    },
+    sessions,
+    statusInfo: () => ({ polling: poller.running, lastError: state.lastError ?? '' }),
+    maxSessions: MAX_LISTED_SESSIONS,
+  }
+
+  /**
    * Answer one processed message.
    * @param record - incoming history record.
    * @param ok - whether the command succeeded.
    * @param summary - one short line.
    * @param details - optional command output.
+   * @param markup - optional `reply_markup` payload.
    */
-  async function answer(record, ok, summary, details) {
+  async function answer(record, ok, summary, details, markup) {
     try {
-      await sendTelegram(record.chatId, formatAck(ok, summary, details), { chatTitle: record.chatTitle })
+      await sendTelegram(record.chatId, formatAck(ok, summary, details), {
+        chatTitle: record.chatTitle,
+        replyMarkup: markup,
+      })
     } catch (error) {
       update({ lastError: `не удалось ответить в Telegram: ${redact(error?.message ?? error)}` })
       await persist()
@@ -435,28 +530,47 @@ export function apply(ctx) {
   }
 
   /**
-   * Execute the command of one allowed message and answer it.
+   * Send one plain message — a menu greeting or a hint — and remember it.
+   * @param chatId - Telegram chat id.
+   * @param chatTitle - chat name for the history.
+   * @param text - message text.
+   * @param markup - optional `reply_markup` payload.
+   */
+  async function say(chatId, chatTitle, text, markup) {
+    try {
+      await sendTelegram(chatId, text, { chatTitle, replyMarkup: markup })
+    } catch (error) {
+      update({ lastError: `не удалось отправить сообщение в Telegram: ${redact(error?.message ?? error)}` })
+      await persist()
+    }
+  }
+
+  /**
+   * Execute the command of one allowed message and answer it. A pressed reply
+   * keyboard button arrives as its text, so it is translated back into the
+   * command it stands for before parsing.
    * @param record - incoming message from an allowed chat.
    */
   async function processIncoming(record) {
-    const parsed = parseIncoming(record.text)
+    const pressed = MENU_BUTTON_ACTIONS[record.text.trim()]
+    let text = record.text
+    if (pressed !== undefined) {
+      if (pressed.hint === 'new') {
+        await say(record.chatId, record.chatTitle, MENU_TEXTS.hintNew, replyKeyboard())
+        return
+      }
+      text = `/${pressed.command}`
+    }
+    const parsed = parseIncoming(text)
     try {
       const result = await executeCommand({
         command: parsed.command,
         args: parsed.args,
         chatId: record.chatId,
-        deps: {
-          getState: () => state,
-          save: async patch => {
-            update(patch)
-            await persist()
-          },
-          sessions,
-          statusInfo: () => ({ polling: poller.running, lastError: state.lastError ?? '' }),
-          maxSessions: MAX_LISTED_SESSIONS,
-        },
+        deps: commandDeps,
       })
-      await answer(record, true, result.summary, result.details)
+      const markup = result.replyKeyboard === true ? replyKeyboard() : result.inlineKeyboard
+      await answer(record, true, result.summary, result.details, markup)
     } catch (error) {
       const message = error instanceof SessionsError || error instanceof Error
         ? error.message
@@ -466,13 +580,210 @@ export function apply(ctx) {
   }
 
   /**
+   * Edit the message a button belongs to, falling back to a new message when
+   * Telegram refuses the edit (a message older than 48 hours cannot be edited).
+   * @param callback - parsed callback.
+   * @param text - new text.
+   * @param markup - optional inline keyboard.
+   */
+  async function editCallbackMessage(callback, text, markup) {
+    const chatTitle = callback.chatTitle === '' ? callback.chatId : callback.chatTitle
+    if (callback.messageId !== undefined) {
+      try {
+        await telegram.editMessageText({
+          chatId: callback.chatId,
+          messageId: callback.messageId,
+          text,
+          replyMarkup: markup,
+        })
+        return
+      } catch {
+        // fall back to a fresh message
+      }
+    }
+    await sendTelegram(callback.chatId, text, { chatTitle, replyMarkup: markup })
+  }
+
+  /**
+   * Run one inline-button action. Every branch answers the callback first, so
+   * the button never shows a spinner for long.
+   * @param parsed - `{ action, sessionId? }` from the callback data.
+   * @param callback - parsed callback query.
+   * @param ack - answers the callback at most once.
+   */
+  async function runCallbackAction(parsed, callback, ack) {
+    const chatId = callback.chatId
+    const chatTitle = callback.chatTitle === '' ? callback.chatId : callback.chatTitle
+    if (parsed.action === 'use') {
+      const sessionId = typeof parsed.sessionId === 'string' ? parsed.sessionId : ''
+      if (sessionId === '') {
+        await ack(MENU_TEXTS.sessionNotChosenForCallback)
+        return
+      }
+      update({ currentChatSession: { ...state.currentChatSession, [chatId]: sessionId } })
+      await persist()
+      const label = sessionLabel(await cachedTitle(sessionId), sessionId)
+      await ack('Сессия выбрана')
+      await editCallbackMessage(
+        callback,
+        formatAck(true, 'сессия выбрана', MENU_TEXTS.sessionChosen(label)),
+        sessionInlineKeyboard(sessionId),
+      )
+      return
+    }
+    if (parsed.action === 'cancel') {
+      const sessionId = typeof parsed.sessionId === 'string' && parsed.sessionId !== ''
+        ? parsed.sessionId
+        : (state.currentChatSession?.[chatId] ?? '')
+      if (sessionId === '') {
+        await ack(MENU_TEXTS.sessionNotChosenForCallback)
+        return
+      }
+      try {
+        await sessions.cancel(sessionId)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : MENU_TEXTS.cancelFailed
+        await ack(MENU_TEXTS.cancelFailed)
+        await editCallbackMessage(callback, formatAck(false, message), statusInlineKeyboard(sessionId))
+        return
+      }
+      const label = sessionLabel(await cachedTitle(sessionId), sessionId)
+      await ack('Отмена запрошена')
+      await editCallbackMessage(
+        callback,
+        formatAck(true, MENU_TEXTS.cancelRequested(label)),
+        statusInlineKeyboard(sessionId),
+      )
+      return
+    }
+    if (parsed.action === 'sessions-refresh') {
+      let rows = []
+      try {
+        rows = await sessions.list({ limit: MAX_LISTED_SESSIONS })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : MENU_TEXTS.refreshFailed
+        await ack(MENU_TEXTS.refreshFailed)
+        await editCallbackMessage(callback, formatAck(false, message), sessionsInlineKeyboard([]))
+        return
+      }
+      if (rows.length === 0) {
+        await ack('Сессий нет')
+        await editCallbackMessage(callback, formatAck(false, REPLIES.emptySessions), sessionsInlineKeyboard([]))
+        return
+      }
+      update({
+        pendingLists: { ...state.pendingLists, [chatId]: rows.map(row => row.sessionId) },
+      })
+      await persist()
+      await ack('Список обновлён')
+      await editCallbackMessage(
+        callback,
+        formatAck(true, `сессий: ${rows.length}`, MENU_TEXTS.chooseSession),
+        sessionsInlineKeyboard(rows),
+      )
+      return
+    }
+    if (parsed.action === 'status') {
+      const current = await currentSessionInfo(chatId)
+      await ack('Состояние')
+      await editCallbackMessage(
+        callback,
+        statusText({
+          polling: poller.running,
+          lastError: state.lastError ?? '',
+          totalMessages: state.messages.length,
+          allowedCount: state.allowedChatIds.length,
+          current,
+          sessionsAvailable: sessions.available(),
+        }),
+        statusInlineKeyboard(current?.sessionId ?? ''),
+      )
+      return
+    }
+    if (parsed.action === 'help') {
+      await ack('Помощь')
+      await editCallbackMessage(callback, helpText(), helpInlineKeyboard())
+      return
+    }
+    if (parsed.action === 'menu') {
+      await ack(MENU_TEXTS.menuSent)
+      await editCallbackMessage(callback, MENU_TEXTS.menuSent)
+      await say(chatId, chatTitle, MENU_TEXTS.greeting, replyKeyboard())
+      return
+    }
+    if (parsed.action === 'ask') {
+      await ack(MENU_TEXTS.hintAsk)
+      await say(chatId, chatTitle, MENU_TEXTS.hintAsk, replyKeyboard())
+      return
+    }
+    await ack(MENU_TEXTS.unknownButton)
+  }
+
+  /**
+   * Handle one pressed inline button: the whitelist is checked BEFORE any
+   * action, `answerCallbackQuery` is always called (even for stale or foreign
+   * buttons), and a failure never escapes into the polling loop.
+   * @param callback - parsed callback query.
+   */
+  async function handleCallback(callback) {
+    if (callback.callbackId === '') return
+    const token = await resolveToken()
+    if (token === '') return
+    telegram.setToken(token)
+    let answered = false
+    const ack = async text => {
+      if (answered) return
+      answered = true
+      try {
+        await telegram.answerCallbackQuery({
+          callbackQueryId: callback.callbackId,
+          text: typeof text === 'string' && text !== '' ? text : MENU_TEXTS.callbackDone,
+          showAlert: false,
+        })
+      } catch {
+        // Telegram may have already dropped the query
+      }
+    }
+    try {
+      if (callback.chatId === '') {
+        await ack('Не удалось определить чат.')
+        return
+      }
+      if (!isChatAllowed(state, callback.chatId)) {
+        if (denyLimiter.shouldNotify(callback.chatId)) {
+          try {
+            await sendTelegram(callback.chatId, REPLIES.denied, { record: false })
+          } catch {
+            // the denial is best effort
+          }
+        }
+        await ack(MENU_TEXTS.callbackDenied)
+        return
+      }
+      await runCallbackAction(parseCallbackData(callback.data), callback, ack)
+    } catch (error) {
+      update({ lastError: `ошибка кнопки Telegram: ${redact(error?.message ?? error)}` })
+      await persist()
+      await ack('Ошибка. Попробуйте ещё раз.')
+    } finally {
+      await ack(MENU_TEXTS.callbackDone)
+    }
+  }
+
+  /**
    * Handle one long-poll batch: advance the offset, store messages, answer
-   * allowed chats and deny unknown ones.
+   * allowed chats, deny unknown ones and run pressed buttons.
    * @param batch - `{ updates, offset, signal }` from the poller.
    */
   async function handleBatch({ updates, offset }) {
     const incoming = []
+    const callbacks = []
     for (const update of updates) {
+      const callback = callbackFromUpdate(update)
+      if (callback !== undefined) {
+        callbacks.push(callback)
+        continue
+      }
       const record = messageFromUpdate(update)
       if (record === undefined) continue
       if (!isChatAllowed(state, record.chatId)) {
@@ -496,6 +807,9 @@ export function apply(ctx) {
       if (record.blocked === true) continue
       if (record.text.trim() === '') continue
       await processIncoming(record)
+    }
+    for (const callback of callbacks) {
+      await handleCallback(callback)
     }
   }
 
@@ -521,8 +835,13 @@ export function apply(ctx) {
       if (token === '') update({ lastError: 'токен не сохранён' })
     }
     await persist()
-    if (wanted) poller.start()
-    else await poller.stop()
+    if (wanted) {
+      // Enabling receiving means the token works: make sure the «/» menu exists.
+      await refreshCommands()
+      poller.start()
+    } else {
+      await poller.stop()
+    }
     return { enabled: state.enabled, polling: poller.running, lastError: state.lastError ?? '' }
   }
 
@@ -554,6 +873,13 @@ export function apply(ctx) {
             allowedChatIds: state.allowedChatIds,
             currentSession,
             chats,
+            menu: {
+              version: MENU_VERSION,
+              publishedVersion: state.commandsMenu?.version ?? '',
+              at: Number(state.commandsMenu?.at) || 0,
+              ok: state.commandsMenu?.ok === true && state.commandsMenu?.version === MENU_VERSION,
+              commands: COMMANDS_MENU.map(item => `/${item.command}`),
+            },
           })
         },
       })
@@ -705,6 +1031,19 @@ export function apply(ctx) {
           return json({ ok: true, chatId: id, message: 'Текущая сессия для чата сброшена.' })
         },
       })
+
+      ctx.connection.fetch.register({
+        path: MENU_REFRESH_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async request => {
+          await ready
+          const body = await readBody(request)
+          // The page's button always forces: the person clicked it to fix the menu.
+          const result = await refreshCommands(body.force !== false)
+          return json({ ok: result.ok === true, ...result })
+        },
+      })
     }, 'dsh-inbox: routes')
   } catch (error) {
     console.error('[dsh-inbox] маршруты недоступны:', error)
@@ -733,8 +1072,12 @@ export function apply(ctx) {
       () =>
         ctx.on('credentials/reference-updated', ref => {
           if (ref !== TOKEN_REF) return
-          update({ botUsername: '' }, { persist: true })
-          if (state.enabled === true) poller.start()
+          // A new token may belong to another bot, which needs its own menu.
+          update({ botUsername: '', commandsMenu: { version: '', at: 0, ok: false } }, { persist: true })
+          if (state.enabled === true) {
+            poller.start()
+            void refreshCommands()
+          }
         }),
       'dsh-inbox: token tracking',
     )
@@ -750,6 +1093,8 @@ export function apply(ctx) {
       if (stopped) return
       if (state.enabled !== true) return
       poller.start()
+      // The daily-cached command list is checked on every start.
+      void refreshCommands()
       if (state.botUsername === '') void verifyToken()
     })
     return () => {

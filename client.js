@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
     const CLEAR_PATH = '/api/dsh-inbox/messages/clear';
     const ALLOWLIST_PATH = '/api/dsh-inbox/allowlist';
     const SESSION_RESET_PATH = '/api/dsh-inbox/session/reset';
+    const MENU_REFRESH_PATH = '/api/dsh-inbox/menu/refresh';
     const REFRESH_MS = 4000;
 
     const en = {
@@ -124,6 +125,18 @@ window.__ModuleLoader__.load({
       cmdLast: '/last — last 5 Inbox messages',
       blockedBadge: '⛔ no access',
       blockedHint: 'A chat outside the list cannot control DSH; allow it from the chat list below.',
+      menuTitle: 'Telegram menu',
+      menuHint: 'The command list behind «/» and the keyboard at the bottom of the chat. The bot publishes them itself after a successful token check and at most once a day.',
+      menuOn: 'command menu published',
+      menuOff: 'not published yet',
+      menuUpdate: 'Refresh command menu',
+      menuUpdating: 'Refreshing…',
+      menuUpdateDone: 'Command menu updated.',
+      menuUpdateFailed: 'Could not update the command menu.',
+      menuCommands: 'Commands:',
+      menuButtons: 'Keyboard:',
+      menuButtonsValue: '📋 Сессии · ➕ Новая сессия · ⏹ Прервать · ℹ️ Состояние · ❓ Помощь',
+      menuUpdatedAt: 'Last published:',
     };
 
     const ru = {
@@ -220,6 +233,18 @@ window.__ModuleLoader__.load({
       cmdLast: '/last — последние 5 сообщений «Входящих»',
       blockedBadge: '⛔ нет доступа',
       blockedHint: 'Чат вне списка не может управлять DSH; разрешите его в списке чатов ниже.',
+      menuTitle: 'Меню в Telegram',
+      menuHint: 'Список команд в «/» и клавиатура внизу чата. Бот публикует их сам после успешной проверки токена и не чаще раза в сутки.',
+      menuOn: 'меню команд опубликовано',
+      menuOff: 'ещё не опубликовано',
+      menuUpdate: 'Обновить меню команд',
+      menuUpdating: 'Обновляем…',
+      menuUpdateDone: 'Меню команд обновлено.',
+      menuUpdateFailed: 'Не удалось обновить меню команд.',
+      menuCommands: 'Команды:',
+      menuButtons: 'Клавиатура:',
+      menuButtonsValue: '📋 Сессии · ➕ Новая сессия · ⏹ Прервать · ℹ️ Состояние · ❓ Помощь',
+      menuUpdatedAt: 'Последняя публикация:',
     };
 
     /**
@@ -577,6 +602,20 @@ window.__ModuleLoader__.load({
           }
         });
 
+        const refreshMenu = () => run('menu', async () => {
+          try {
+            const payload = await call(MENU_REFRESH_PATH, { force: true });
+            if (!mounted.current) return;
+            setNotice({
+              kind: payload?.ok === true ? 'ok' : 'bad',
+              text: payload?.ok === true ? (payload.message ?? t('menuUpdateDone')) : (payload?.message ?? t('menuUpdateFailed')),
+            });
+            await refresh();
+          } catch {
+            if (mounted.current) setNotice({ kind: 'bad', text: t('menuUpdateFailed') });
+          }
+        });
+
         const configured = snapshot?.configured === true;
         const enabled = snapshot?.enabled === true;
         const messages = Array.isArray(snapshot?.messages) ? snapshot.messages : [];
@@ -602,6 +641,10 @@ window.__ModuleLoader__.load({
         const allowedIds = Array.isArray(snapshot?.allowedChatIds) ? snapshot.allowedChatIds : [];
         const chats = Array.isArray(snapshot?.chats) ? snapshot.chats : [];
         const currentSession = snapshot?.currentSession ?? null;
+        const menu = snapshot?.menu ?? {};
+        const menuOk = menu.ok === true;
+        const menuAt = Number(menu.at) > 0 ? formatTime(new Date(Number(menu.at)).toISOString()) : '';
+        const menuCommands = Array.isArray(menu.commands) ? menu.commands.join(' · ') : '';
         const commandLines = [
           t('cmdHelp'),
           t('cmdStatus'),
@@ -811,6 +854,35 @@ window.__ModuleLoader__.load({
                   }, t('sessionReset')),
                 ),
             currentSession === null ? null : h('p', { className: 'dsh-inbox-hint' }, t('sessionHint')),
+          ),
+          h(
+            'div',
+            { className: 'dsh-inbox-card' },
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('span', { className: 'dsh-inbox-label' }, t('menuTitle')),
+              h('span', { className: menuOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+                menuOk ? t('menuOn') : t('menuOff')),
+            ),
+            menuOk && menuAt !== ''
+              ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuUpdatedAt')} ${menuAt}`)
+              : null,
+            menuCommands !== ''
+              ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuCommands')} ${menuCommands}`)
+              : null,
+            h('p', { className: 'dsh-inbox-hint' }, `${t('menuButtons')} ${t('menuButtonsValue')}`),
+            h(
+              'div',
+              { className: 'dsh-inbox-row' },
+              h('button', {
+                type: 'button',
+                className: 'dsh-inbox-button is-primary',
+                disabled: busy !== '',
+                onClick: () => void refreshMenu(),
+              }, busy === 'menu' ? t('menuUpdating') : t('menuUpdate')),
+            ),
+            h('p', { className: 'dsh-inbox-hint' }, t('menuHint')),
           ),
           h(
             'div',

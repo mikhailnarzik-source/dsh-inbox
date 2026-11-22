@@ -136,13 +136,17 @@ export function installFetch(handler) {
 }
 
 /**
- * A Telegram Bot API double: `getMe`, `getUpdates` and `sendMessage` with
- * built-in defaults; every outgoing text is remembered in `sent`.
+ * A Telegram Bot API double: `getMe`, `getUpdates`, `sendMessage`,
+ * `setMyCommands`, `editMessageText` and `answerCallbackQuery` with built-in
+ * defaults; outgoing text and call data are remembered.
  * @param options - overrides per method.
- * @returns `{ calls, sent, restore }`.
+ * @returns `{ calls, sent, myCommands, edits, answers, restore }`.
  */
 export function telegramMock(options = {}) {
   const sent = []
+  const myCommands = []
+  const edits = []
+  const answers = []
   const mock = installFetch(({ method, body }) => {
     if (method === 'getMe') {
       return options.getMe !== undefined
@@ -158,9 +162,27 @@ export function telegramMock(options = {}) {
         ? options.sendMessage(body)
         : telegramResponse({ message_id: sent.length })
     }
+    if (method === 'setMyCommands') {
+      myCommands.push(body)
+      return options.setMyCommands !== undefined
+        ? options.setMyCommands(body)
+        : telegramResponse(true)
+    }
+    if (method === 'editMessageText') {
+      edits.push(body)
+      return options.editMessageText !== undefined
+        ? options.editMessageText(body)
+        : telegramResponse({ message_id: body.message_id })
+    }
+    if (method === 'answerCallbackQuery') {
+      answers.push(body)
+      return options.answerCallbackQuery !== undefined
+        ? options.answerCallbackQuery(body)
+        : telegramResponse(true)
+    }
     return telegramError(404, 'Not Found', 404)
   })
-  return { calls: mock.calls, sent, restore: mock.restore }
+  return { calls: mock.calls, sent, myCommands, edits, answers, restore: mock.restore }
 }
 
 /**

@@ -34,7 +34,7 @@ function record(overrides = {}) {
   }
 }
 
-test('emptyState: пустая история с версией, выключенным приёмом и пустым белым списком', () => {
+test('emptyState: пустая история, пустой белый список и неопубликованное меню', () => {
   assert.deepEqual(emptyState(), {
     version: STATE_VERSION,
     offset: 0,
@@ -43,9 +43,10 @@ test('emptyState: пустая история с версией, выключе�
     allowedChatIds: [],
     currentChatSession: {},
     pendingLists: {},
+    commandsMenu: { version: '', at: 0, ok: false },
     messages: [],
   })
-  assert.equal(STATE_VERSION, 2)
+  assert.equal(STATE_VERSION, 3)
 })
 
 test('normalizeState: мусор и неверные типы дают пустое состояние', () => {
@@ -80,6 +81,15 @@ test('normalizeState: белый список, текущие сессии и с
   assert.deepEqual(state.allowedChatIds, ['123', '-1001234567890', '42'])
   assert.deepEqual(state.currentChatSession, { '123': 'session-a' })
   assert.deepEqual(state.pendingLists, { '123': ['s1', 's2'] })
+})
+
+test('normalizeState: кэш меню команд очищается и переживает запись', () => {
+  const state = normalizeState({
+    commandsMenu: { version: ' 0.3.0 ', at: 1700000000000.9, ok: true },
+  })
+  assert.deepEqual(state.commandsMenu, { version: '0.3.0', at: 1700000000000, ok: true })
+  assert.deepEqual(normalizeState({ commandsMenu: 'нет' }).commandsMenu, { version: '', at: 0, ok: false })
+  assert.deepEqual(normalizeState({ commandsMenu: { version: 5, at: -1, ok: 'да' } }).commandsMenu, { version: '', at: 0, ok: false })
 })
 
 test('normalizeState: файл версии 1 без новых полей читается как совместимый', () => {

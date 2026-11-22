@@ -94,7 +94,7 @@ test('Telegram-клиент: getMe и sendMessage разбирают ответ,
   })
 })
 
-test('Telegram-клиент: getUpdates просит только message и длинный опрос', async () => {
+test('Telegram-клиент: getUpdates просит сообщения и нажатия кнопок, длинный опрос', async () => {
   let body
   const client = createTelegram({
     token: TOKEN,
@@ -105,7 +105,7 @@ test('Telegram-клиент: getUpdates просит только message и д�
   })
   const updates = await client.getUpdates({ offset: 33, timeout: 25 })
   assert.deepEqual(updates, [])
-  assert.deepEqual(body, { offset: 33, timeout: 25, allowed_updates: ['message'] })
+  assert.deepEqual(body, { offset: 33, timeout: 25, allowed_updates: ['message', 'callback_query'] })
   client.setToken('987654321:BBotherTOKENvalue_abcdefghijkl')
   await client.getUpdates({})
   assert.equal(body.offset, 0)
