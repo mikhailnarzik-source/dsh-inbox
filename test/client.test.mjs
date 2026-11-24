@@ -24,11 +24,17 @@ const fakeReact = {
   useMemo: factory => factory(),
 }
 
-/** Render function components down to plain host elements. */
+/** Render function components down to plain host elements (children included). */
 function render(node) {
-  if (node === null || node === undefined) return node
+  if (node === null || node === undefined || typeof node === 'boolean') return node
   if (Array.isArray(node)) return node.map(render)
+  if (typeof node === 'string' || typeof node === 'number') return node
   if (typeof node === 'object' && typeof node.type === 'function') return render(node.type(node.props ?? {}))
+  if (typeof node === 'object' && node.props !== undefined) {
+    const raw = node.props.children
+    const children = Array.isArray(raw) ? raw.map(render) : render(raw)
+    return { ...node, props: { ...node.props, children } }
+  }
   return node
 }
 
@@ -158,6 +164,45 @@ function elements(node, found = []) {
   return found
 }
 
+/** Снимок подключённого бота: полная страница «Входящих». */
+function connectedSnapshot(overrides = {}) {
+  return {
+    ok: true,
+    configured: true,
+    enabled: true,
+    writable: true,
+    botUsername: 'dsh_bot',
+    allowedUserIds: ['123456789'],
+    allowedChatIds: ['123456789'],
+    chats: [],
+    messages: [],
+    totalMessages: 0,
+    maxMessages: 200,
+    currentSession: null,
+    security: { groupsEnabled: false },
+    owner: { userId: '123456789', chatId: '123456789' },
+    botProfile: { ok: true, name: 'DSH', description: '', commands: [] },
+    webhook: {},
+    menu: { ok: true, at: 0, commands: [] },
+    queue: { configured: false, counts: {}, devices: [], inProgress: [], listener: false },
+    device: { name: 'PC', id: 'abcdef123456' },
+    lastError: '',
+    ...overrides,
+  }
+}
+
+/** Страница в секции «Плагины» с заданным снимком состояния. */
+async function renderPage(initialSnapshot) {
+  const { registered } = await loadClient()
+  const { component } = registered[0]
+  const element = component({
+    subject: { kind: 'bundle', pkg: { name: 'dsh-inbox' } },
+    ...(initialSnapshot === undefined ? {} : { initialSnapshot }),
+  })
+  assert.notEqual(element, null)
+  return render(element)
+}
+
 test('client.js: словари en и ru с одинаковым набором ключей', async () => {
   const { module, locales } = await loadClient()
   assert.equal(locales.length, 1)
@@ -209,12 +254,27 @@ test('client.js: сводка в списке плагинов рисуется 
   assert.match(labels, /inbox\.pollingOff/)
 })
 
-test('client.js: страница рисуется без ошибок и содержит все блоки', async () => {
-  const { registered } = await loadClient()
-  const { component } = registered[0]
-  const element = component({ subject: { kind: 'bundle', pkg: { name: 'dsh-inbox' } } })
-  assert.notEqual(element, null)
-  const tree = render(element)
+test('client.js: без токена на странице только токен и «как получить»', async () => {
+  const tree = await renderPage(undefined)
+  const allClasses = classes(tree).join(' ')
+  for (const className of ['dsh-inbox', 'dsh-inbox-card', 'dsh-inbox-input']) {
+    assert.ok(allClasses.includes(className), `на странице есть ${className}`)
+  }
+  const labels = texts(tree).join(' ')
+  for (const key of ['inbox.tokenLabel', 'inbox.howTitle', 'inbox.connectFirst', 'inbox.storedIn', 'inbox.verify']) {
+    assert.ok(labels.includes(key), `на странице есть строка ${key}`)
+  }
+  assert.ok(hrefs(tree).includes('https://t.me/BotFather'), 'ссылка на @BotFather')
+  // Белый список, сессия, команды и очередь — только после подключения.
+  for (const key of ['inbox.allowTitle', 'inbox.sessionBlockTitle', 'inbox.commandsTitle', 'inbox.queueTitle', 'inbox.historyTitle', 'inbox.dangerTitle']) {
+    assert.ok(!labels.includes(key), `без токена нет блока ${key}`)
+  }
+  assert.equal(allClasses.includes('dsh-inbox-switch'), false, 'переключателя приёма нет')
+  assert.equal(allClasses.includes('dsh-inbox-reply'), false, 'ответа нет')
+})
+
+test('client.js: после подключения видны белый список, сессия, команды и очередь', async () => {
+  const tree = await renderPage(connectedSnapshot({ allowedUserIds: [], allowedChatIds: [] }))
   const allClasses = classes(tree).join(' ')
   for (const className of ['dsh-inbox', 'dsh-inbox-card', 'dsh-inbox-input', 'dsh-inbox-switch', 'dsh-inbox-reply', 'dsh-inbox-textarea']) {
     assert.ok(allClasses.includes(className), `на странице есть ${className}`)
@@ -245,16 +305,73 @@ test('client.js: страница рисуется без ошибок и сод
     'inbox.commandsTitle',
     'inbox.cmdSessions',
     'inbox.cmdCancel',
+    'inbox.dangerTitle',
+    'inbox.moreTitle',
   ]) {
     assert.ok(labels.includes(key), `на странице есть строка ${key}`)
   }
   assert.ok(hrefs(tree).includes('https://t.me/BotFather'), 'ссылка на @BotFather')
 })
 
+test('client.js: «Очередь между устройствами» — в свёрнутом «Дополнительно»', async () => {
+  const tree = await renderPage(connectedSnapshot())
+  const accordions = elements(tree).filter(node => node.props?.className === 'dsh-inbox-acc' || node.props?.className === 'dsh-inbox-acc is-danger')
+  assert.equal(accordions.length, 2, 'два аккордеона: «Дополнительно» и «Опасная зона»')
+  const toggles = elements(tree).filter(node => typeof node.props?.className === 'string' && node.props.className.startsWith('dsh-inbox-acc-toggle'))
+  assert.equal(toggles.length, 2)
+  for (const toggle of toggles) assert.equal(toggle.props['aria-expanded'], 'false', 'по умолчанию свёрнуто')
+  const bodies = elements(tree).filter(node => typeof node.props?.className === 'string' && node.props.className.startsWith('dsh-inbox-acc-body'))
+  assert.equal(bodies.length, 2)
+  for (const body of bodies) assert.equal(body.props.hidden, true, 'тело скрыто атрибутом hidden')
+  const more = accordions.find(node => !node.props.className.includes('is-danger'))
+  assert.ok(elements(more).some(node => texts(node).join(' ').includes('inbox.queueTitle')), 'очередь внутри «Дополнительно»')
+  const danger = accordions.find(node => node.props.className.includes('is-danger'))
+  assert.ok(danger, 'опасная зона выделена красным')
+  assert.equal(texts(danger).join(' ').includes('inbox.dangerTitle'), true)
+  // Опасная зона — последний блок страницы.
+  const page = elements(tree).find(node => node.props?.className === 'dsh-inbox')
+  const last = [...page.props.children].filter(child => child !== null && child !== undefined).at(-1)
+  assert.equal(last, danger, 'опасная зона внизу')
+})
+
+test('client.js: очистка истории и удаление токена — в «Опасной зоне» с подтверждением', async () => {
+  const tree = await renderPage(connectedSnapshot({ messages: [{ at: new Date().toISOString(), direction: 'in', chatId: '1', chatTitle: 'Чат', text: 'привет' }] }))
+  const danger = elements(tree).find(node => typeof node.props?.className === 'string' && node.props.className.includes('dsh-inbox-acc is-danger'))
+  assert.ok(danger, 'опасная зона')
+  const buttons = elements(danger).filter(node => node.type === 'button' && String(node.props.className ?? '').includes('is-danger'))
+  assert.equal(buttons.length, 2, 'очистка истории и удаление токена')
+  for (const button of buttons) {
+    assert.equal(button.props.disabled, false)
+    // Первый клик только взводит подтверждение, действие не выполняется.
+    button.props.onClick()
+  }
+  // В обычной карточке истории кнопки очистки больше нет.
+  const historyCard = elements(tree).find(node => node.props?.className === 'dsh-inbox-card'
+    && elements(node).some(child => texts(child).join(' ') === 'inbox.historyTitle'))
+  assert.ok(historyCard, 'карточка истории')
+  assert.equal(elements(historyCard).some(node => node.type === 'button' && texts(node).join('') === 'inbox.clearTitle'), false)
+})
+
+test('client.js: сохранение рядом с полями — бейдж «есть изменения»', async () => {
+  const tree = await renderPage(connectedSnapshot())
+  const savebars = elements(tree).filter(node => node.props?.className === 'dsh-inbox-savebar')
+  assert.equal(savebars.length, 3, 'токен, белый список и владелец — три ряда сохранения')
+  const badges = savebars.map(bar => elements(bar).find(node => String(node.props?.className ?? '').startsWith('dsh-inbox-savebar-badge')))
+  for (const badge of badges) {
+    assert.ok(badge, 'бейдж изменений')
+    assert.equal(badge.props.className, 'dsh-inbox-savebar-badge')
+    assert.equal(texts(badge).join(''), 'inbox.noChanges')
+  }
+  // Сохранение стоит в той же карточке, что и поле.
+  const tokenCard = elements(tree).find(node => node.props?.className === 'dsh-inbox-card'
+    && elements(node).some(child => child.props?.id === 'dsh-inbox-token'))
+  assert.ok(tokenCard, 'карточка токена')
+  assert.ok(elements(tokenCard).some(node => node.props?.className === 'dsh-inbox-savebar'))
+  assert.ok(elements(tokenCard).some(node => node.type === 'button' && texts(node).join('') === 'inbox.save'))
+})
+
 test('client.js: страница оформлена по единому стилю', async () => {
-  const { registered } = await loadClient()
-  const { component } = registered[0]
-  const tree = render(component({ subject: { kind: 'bundle', pkg: { name: 'dsh-inbox' } } }))
+  const tree = await renderPage(connectedSnapshot())
   const all = elements(tree)
 
   // Центрированный контейнер 960: стиль задан и на контейнере, и в CSS.

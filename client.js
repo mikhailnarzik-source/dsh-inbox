@@ -52,6 +52,9 @@ window.__ModuleLoader__.load({
     /** Общее состояние панелей ведёт dsh-polish; здесь только чтение. */
     const PANEL_VISIBILITY_KEY = 'dsh-polish:panel-visibility';
     const PANELS_CHANGED_EVENT = 'dsh-polish:panels-changed';
+    /** Состояние свёрнутых разделов страницы «Входящих». */
+    const MORE_OPEN_KEY = 'dsh-inbox:more-open';
+    const DANGER_OPEN_KEY = 'dsh-inbox:danger-open';
 
     /** Эмодзи строки левой панели — та же иконка, что в шапке страницы. */
     const PANEL_EMOJI = '📥';
@@ -226,6 +229,17 @@ window.__ModuleLoader__.load({
       webhookDeleteConfirm: 'Remove the webhook so long polling works again?',
       webhookDeleted: 'Webhook removed.',
       webhookFailed: 'Could not remove the webhook.',
+      connectFirst: 'The whitelist, the current session, commands and the shared queue appear after the bot is connected: save the token and press “Check”.',
+      moreTitle: 'More',
+      moreHint: 'The shared command queue between devices — only needed on several machines.',
+      dangerTitle: 'Danger zone',
+      dangerHint: 'Clearing the history and removing the token cannot be undone. Removing the token also turns receiving off.',
+      unsaved: 'unsaved changes',
+      noChanges: 'no changes',
+      clearConfirm: 'Click again to clear the history',
+      removeConfirm: 'Click again to remove the token',
+      clearTitle: 'Clear history',
+      removeTitle: 'Remove token',
     };
 
     const ru = {
@@ -398,6 +412,17 @@ window.__ModuleLoader__.load({
       webhookDeleteConfirm: 'Снять webhook, чтобы long polling снова работал?',
       webhookDeleted: 'Webhook снят.',
       webhookFailed: 'Не удалось снять webhook.',
+      connectFirst: 'Белый список, текущая сессия, команды и очередь появятся после подключения бота: сохраните токен и нажмите «Проверить».',
+      moreTitle: 'Дополнительно',
+      moreHint: 'Общая очередь команд между устройствами — нужна, только если работаете на нескольких машинах.',
+      dangerTitle: 'Опасная зона',
+      dangerHint: 'Очистка истории и удаление токена необратимы. Удаление токена выключает приём сообщений.',
+      unsaved: 'есть изменения',
+      noChanges: 'изменений нет',
+      clearConfirm: 'Нажмите ещё раз, чтобы очистить историю',
+      removeConfirm: 'Нажмите ещё раз, чтобы удалить токен',
+      clearTitle: 'Очистить историю',
+      removeTitle: 'Удалить токен',
     };
 
     /**
@@ -481,8 +506,30 @@ window.__ModuleLoader__.load({
 .dsh-inbox-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base)}
 .dsh-inbox-session:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,transparent)}
 .dsh-inbox-session-name{font-weight:600}
-@media (max-width:900px){.dsh-inbox{padding:20px 18px 36px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}}
-@media (max-width:640px){.dsh-inbox{padding:16px 14px 28px !important}.dsh-inbox-card{padding:12px}.dsh-inbox-row{gap:6px}.dsh-inbox-header-actions .dsh-inbox-button{flex:1 1 auto}.dsh-inbox-chat{max-width:100%}.dsh-inbox-button{white-space:normal;text-align:center}}
+/* Аккордеоны второстепенного: «Дополнительно» и «Опасная зона». */
+.dsh-inbox-acc{display:flex;flex-direction:column;min-width:0;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1)}
+.dsh-inbox-acc.is-danger{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 38%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 4%,var(--dsw-alias-bg-layer-1))}
+.dsh-inbox-acc-toggle{display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;gap:8px;box-sizing:border-box;width:100%;min-width:0;padding:14px 16px;border:0;border-radius:14px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;font-weight:600;line-height:20px;text-align:left;cursor:pointer}
+.dsh-inbox-acc-toggle:hover{color:var(--dsw-alias-brand-primary)}
+.dsh-inbox-acc-toggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.dsh-inbox-acc.is-danger .dsh-inbox-acc-toggle{color:var(--dsw-alias-state-error-primary)}
+.dsh-inbox-acc-chevron{flex:none;width:14px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1}
+.dsh-inbox-acc-title{min-width:0;overflow-wrap:anywhere}
+.dsh-inbox-acc-badge{flex:none;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;min-height:22px;padding:1px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11.5px;font-weight:600;line-height:16px;white-space:nowrap}
+.dsh-inbox-acc-badge::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.dsh-inbox-acc-body{display:flex;flex-direction:column;gap:10px;min-width:0;padding:0 16px 16px;border-top:.5px solid var(--dsw-alias-border-l1);padding-top:14px}
+.dsh-inbox-acc-body[hidden]{display:none}
+.dsh-inbox-acc-body .dsh-inbox-card{margin:0}
+/* Сохранение рядом с полями: бейдж «есть изменения» и кнопки. */
+.dsh-inbox-savebar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;min-width:0}
+.dsh-inbox-savebar-badge{box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:1px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11.5px;font-weight:600;line-height:18px;white-space:nowrap}
+.dsh-inbox-savebar-badge::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+.dsh-inbox-savebar-badge.is-dirty{border-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 14%,transparent);color:var(--dsw-alias-state-warn-primary)}
+.dsh-inbox-savebar-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
+.dsh-inbox-danger-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.dsh-inbox-danger-note{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:17px;text-align:justify;hyphens:auto}
+@media (max-width:900px){.dsh-inbox{padding:20px 18px 36px !important}.dsh-inbox-header{gap:10px}.dsh-inbox-header-actions{margin-left:0}.dsh-inbox-card{padding:14px}.dsh-inbox-acc-toggle{padding:12px}.dsh-inbox-acc-body{padding:0 12px 12px;padding-top:12px}}
+@media (max-width:640px){.dsh-inbox{padding:16px 14px 28px !important}.dsh-inbox-card{padding:12px}.dsh-inbox-row{gap:6px}.dsh-inbox-header-actions .dsh-inbox-button{flex:1 1 auto}.dsh-inbox-chat{max-width:100%}.dsh-inbox-button{white-space:normal;text-align:center}.dsh-inbox-savebar-actions{width:100%;margin-left:0}.dsh-inbox-savebar-actions .dsh-inbox-button{flex:1 1 auto}.dsh-inbox-danger-actions .dsh-inbox-button{flex:1 1 auto}}
 `;
 
     /**
@@ -613,10 +660,66 @@ window.__ModuleLoader__.load({
         );
       }
 
+      /** Свёрнутый раздел страницы: кнопка-заголовок, бейдж и скрытое тело. */
+      function Accordion(props) {
+        const key = typeof props.storageKey === 'string' ? props.storageKey : '';
+        const [open, setOpen] = React.useState(() => {
+          if (typeof props.defaultOpen === 'boolean') return props.defaultOpen;
+          const storage = panelStorage();
+          if (storage === null || key === '') return false;
+          try {
+            return storage.getItem(key) === '1';
+          } catch {
+            return false;
+          }
+        });
+        const toggle = () => {
+          const next = open !== true;
+          const storage = panelStorage();
+          if (storage !== null && key !== '') {
+            try {
+              storage.setItem(key, next ? '1' : '0');
+            } catch {
+              // Приватный режим: раздел всё равно раскроется в текущей вкладке.
+            }
+          }
+          setOpen(next);
+        };
+        return h('section', { className: 'dsh-inbox-acc' + (props.tone === 'danger' ? ' is-danger' : '') },
+          h('button', {
+            type: 'button',
+            className: 'dsh-inbox-acc-toggle',
+            'aria-expanded': open === true ? 'true' : 'false',
+            onClick: toggle,
+          },
+          h('span', { className: 'dsh-inbox-acc-chevron', 'aria-hidden': true }, open === true ? '▾' : '▸'),
+          h('span', { className: 'dsh-inbox-acc-title' }, props.title),
+          typeof props.badge === 'string' && props.badge !== '' ? h('span', { className: 'dsh-inbox-acc-badge' }, props.badge) : null),
+          h('div', { className: 'dsh-inbox-acc-body', hidden: open !== true }, props.children));
+      }
+
+      /** Ряд «есть изменения» и кнопка сохранения рядом с полями карточки. */
+      function SaveBar(props) {
+        const dirty = props.dirty === true;
+        return h('div', { className: 'dsh-inbox-savebar' },
+          h('span', {
+            className: dirty ? 'dsh-inbox-savebar-badge is-dirty' : 'dsh-inbox-savebar-badge',
+            role: 'status',
+          }, dirty ? t('unsaved') : t('noChanges')),
+          h('div', { className: 'dsh-inbox-savebar-actions' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-primary',
+              disabled: props.busy === true || props.disabled === true,
+              onClick: props.onSave,
+            }, props.label ?? t('save'))));
+      }
+
       /** The full section: token, receive switch, history and reply. */
-      function InboxPage() {
-        const [snapshot, setSnapshot] = React.useState(null);
-        const [phase, setPhase] = React.useState('loading');
+      function InboxPage(props) {
+        const initialSnapshot = props !== null && props !== undefined && typeof props.initialSnapshot === 'object' ? props.initialSnapshot : null;
+        const [snapshot, setSnapshot] = React.useState(initialSnapshot);
+        const [phase, setPhase] = React.useState(initialSnapshot === null ? 'loading' : 'ready');
         const [draft, setDraft] = React.useState('');
         const [reply, setReply] = React.useState('');
         const [busy, setBusy] = React.useState('');
@@ -626,6 +729,7 @@ window.__ModuleLoader__.load({
         const [allowDirty, setAllowDirty] = React.useState(false);
         const [ownerDraft, setOwnerDraft] = React.useState('');
         const [ownerDirty, setOwnerDirty] = React.useState(false);
+        const [dangerArmed, setDangerArmed] = React.useState('');
         const mounted = React.useRef(true);
 
         const refresh = React.useCallback(async () => {
@@ -944,7 +1048,6 @@ window.__ModuleLoader__.load({
         });
 
         const removeWebhook = () => run('webhook', async () => {
-          if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(t('webhookDeleteConfirm'))) return;
           try {
             const payload = await call(WEBHOOK_DELETE_PATH, {});
             if (!mounted.current) return;
@@ -1021,6 +1124,544 @@ window.__ModuleLoader__.load({
           t('cmdLast'),
         ];
 
+        const connected = configured === true;
+        const tokenDirty = draft.trim() !== '';
+
+        const tokenCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h('label', { className: 'dsh-inbox-card-title', htmlFor: 'dsh-inbox-token' }, t('tokenLabel')),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('input', {
+              id: 'dsh-inbox-token',
+              className: 'dsh-inbox-input',
+              type: 'password',
+              autoComplete: 'off',
+              spellCheck: false,
+              placeholder: configured ? t('tokenPlaceholderSet') : t('tokenPlaceholderUnset'),
+              value: draft,
+              disabled: busy !== '' || snapshot?.writable === false,
+              onChange: event => setDraft(event.target.value),
+              onKeyDown: event => {
+                if (event.key === 'Enter') void submitToken();
+              },
+            }),
+          ),
+          h(SaveBar, {
+            busy: busy !== '',
+            dirty: tokenDirty,
+            label: busy === 'save' ? t('saving') : t('save'),
+            disabled: draft.trim() === '',
+            onSave: () => void submitToken(),
+          }),
+          h('p', { className: 'dsh-inbox-hint' }, t('storedIn')),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: verifyClass, role: 'status' }, verifyText),
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button',
+              disabled: busy !== '' || !configured,
+              onClick: () => {
+                if (busy !== '') return;
+                setBusy('verify');
+                void verify().finally(() => {
+                  if (mounted.current) setBusy('');
+                });
+              },
+            }, verifyPhase === 'checking' ? t('verifying') : t('verify')),
+          ),
+          snapshot?.writable === false
+            ? h('p', { className: 'dsh-inbox-error' }, t('readonly'))
+            : null,
+        );
+
+        const receiveCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('button', {
+              type: 'button',
+              role: 'switch',
+              'aria-checked': enabled,
+              'aria-label': t('receiveTitle'),
+              className: enabled ? 'dsh-inbox-switch is-on' : 'dsh-inbox-switch',
+              disabled: busy !== '',
+              onClick: () => void setReceiving(!enabled),
+            }, h('span', { className: 'dsh-inbox-knob' })),
+            h('span', { className: 'dsh-inbox-card-title' }, t('receiveTitle')),
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button',
+              disabled: busy !== '',
+              onClick: () => void setReceiving(!enabled),
+            }, enabled ? t('disable') : t('enable')),
+          ),
+          h('p', { className: 'dsh-inbox-hint' }, t('receiveHint')),
+        );
+
+        const allowCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('allowTitle')),
+            h('span', { className: 'dsh-inbox-hint' }, `${t('allowCount')} ${allowedIds.length}`),
+          ),
+          h('textarea', {
+            className: 'dsh-inbox-textarea',
+            rows: 2,
+            placeholder: t('allowPlaceholder'),
+            value: allowDraft,
+            disabled: busy !== '',
+            onChange: event => {
+              setAllowDirty(true);
+              setAllowDraft(event.target.value);
+            },
+          }),
+          h(SaveBar, {
+            busy: busy !== '',
+            dirty: allowDirty,
+            label: busy === 'allow' ? t('allowSaving') : t('allowSave'),
+            onSave: () => void saveAllowlist(),
+          }),
+          h('p', { className: 'dsh-inbox-hint' }, t('usersHint')),
+          h('p', { className: 'dsh-inbox-hint' }, t('allowHint')),
+          allowedIds.length === 0
+            ? h('p', { className: 'dsh-inbox-error' }, t('allowEmpty'))
+            : null,
+          chats.length > 0
+            ? h(
+                'div',
+                { className: 'dsh-inbox-row' },
+                h('span', { className: 'dsh-inbox-label' }, t('chatsTitle')),
+                h(
+                  'div',
+                  { className: 'dsh-inbox-chips' },
+                  chats.map(chat => h(
+                    'span',
+                    { key: chat.chatId, className: chat.allowed ? 'dsh-inbox-chip' : 'dsh-inbox-chip is-blocked' },
+                    h('span', { className: 'dsh-inbox-chip-name', title: `${chat.chatTitle} (id ${chat.userId ?? chat.chatId}, ${chat.chatType ?? 'private'})` },
+                      chat.chatTitle === '' ? chat.chatId : chat.chatTitle),
+                    chat.allowed
+                      ? h('span', { className: 'dsh-inbox-badge is-on' }, t('allowCurrent'))
+                      : h('button', {
+                          type: 'button',
+                          className: 'dsh-inbox-button',
+                          disabled: busy !== '',
+                          onClick: () => void allowThisChat(chat.chatId, chat.userId),
+                        }, t('allowAdd')),
+                  )),
+                ),
+              )
+            : null,
+          h('p', { className: 'dsh-inbox-hint' }, t('blockedHint')),
+        );
+
+        const securityCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('securityTitle')),
+            h('span', { className: groupsEnabled ? 'dsh-inbox-badge is-off' : 'dsh-inbox-badge is-on' },
+              groupsEnabled ? t('groupsValueOn') : t('groupsValueOff')),
+          ),
+          h('p', { className: 'dsh-inbox-hint' },
+            `${t('ownerLabel')} ${owner.userId ? `${owner.userId}${owner.chatId ? ` (chat ${owner.chatId})` : ''}` : t('ownerNone')}`),
+          h('p', { className: 'dsh-inbox-hint' }, t('ownerHint')),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('input', {
+              className: 'dsh-inbox-input',
+              type: 'text',
+              inputMode: 'numeric',
+              placeholder: t('ownerPlaceholder'),
+              value: ownerDraft,
+              disabled: busy !== '',
+              onChange: event => {
+                setOwnerDirty(true);
+                setOwnerDraft(event.target.value);
+              },
+            }),
+          ),
+          h(SaveBar, {
+            busy: busy !== '',
+            dirty: ownerDirty,
+            label: busy === 'owner' ? t('saving') : t('ownerSave'),
+            disabled: ownerDraft.trim() === '',
+            onSave: () => void saveOwner(),
+          }),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('button', {
+              type: 'button',
+              className: groupsEnabled ? 'dsh-inbox-button is-danger' : 'dsh-inbox-button',
+              disabled: busy !== '',
+              onClick: () => void setGroups(!groupsEnabled),
+            }, groupsEnabled ? t('groupsDeny') : t('groupsAllow')),
+          ),
+          h('p', { className: groupsEnabled ? 'dsh-inbox-error' : 'dsh-inbox-hint' }, t('groupsHint')),
+          h('p', { className: 'dsh-inbox-hint' }, `${t('answersPending')} ${answersPending}`),
+        );
+
+        const sessionCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h('span', { className: 'dsh-inbox-card-title' }, t('sessionBlockTitle')),
+          currentSession === null
+            ? h('div', { className: 'dsh-inbox-row' },
+                h('span', { className: 'dsh-inbox-hint' }, t('sessionNone')),
+                h('span', { className: 'dsh-inbox-hint' }, t('sessionHint')))
+            : h(
+                'div',
+                { className: 'dsh-inbox-session' },
+                h('span', { className: 'dsh-inbox-session-name' },
+                  currentSession.title === '' ? currentSession.sessionId.slice(0, 8) : currentSession.title),
+                h('span', { className: 'dsh-inbox-hint' },
+                  currentSession.sessionId.length > 8 ? currentSession.sessionId.slice(0, 8) : currentSession.sessionId),
+                h('span', { className: currentSession.running ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
+                  currentSession.running ? t('sessionRunning') : t('sessionIdle')),
+                h('span', { className: 'dsh-inbox-hint' }, currentSession.chatTitle),
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-inbox-button',
+                  disabled: busy !== '',
+                  onClick: () => void resetSession(currentSession.chatId),
+                }, t('sessionReset')),
+              ),
+          currentSession === null ? null : h('p', { className: 'dsh-inbox-hint' }, t('sessionHint')),
+        );
+
+        const menuCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('menuTitle')),
+            h('span', { className: menuOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+              menuOk ? t('menuOn') : t('menuOff')),
+          ),
+          menuOk && menuAt !== ''
+            ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuUpdatedAt')} ${menuAt}`)
+            : null,
+          menuCommands !== ''
+            ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuCommands')} ${menuCommands}`)
+            : null,
+          h('p', { className: 'dsh-inbox-hint' }, `${t('menuButtons')} ${t('menuButtonsValue')}`),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-primary',
+              disabled: busy !== '',
+              onClick: () => void refreshMenu(),
+            }, busy === 'menu' ? t('menuUpdating') : t('menuUpdate')),
+          ),
+          h('p', { className: 'dsh-inbox-hint' }, t('menuHint')),
+        );
+
+        const profileCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('profileTitle')),
+            h('span', { className: profileOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+              profileOk ? (profile.name || t('profileTitle')) : t('profileNotPublished')),
+          ),
+          h('p', { className: 'dsh-inbox-hint' }, `${t('profileName')} ${profile.name || '—'}`),
+          h('p', { className: 'dsh-inbox-hint' }, `${t('profileDescription')} ${profile.description || '—'}`),
+          h('p', { className: 'dsh-inbox-hint' },
+            `${t('profileCommands')} ${Array.isArray(profile.commands) ? profile.commands.join(' · ') : '—'}`),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-primary',
+              disabled: busy !== '',
+              onClick: () => void refreshProfile(),
+            }, busy === 'profile' ? t('profileRefreshing') : t('profileRefresh')),
+          ),
+        );
+
+        const commandsCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h('span', { className: 'dsh-inbox-card-title' }, t('commandsTitle')),
+          h(
+            'ul',
+            { className: 'dsh-inbox-list' },
+            commandLines.map((line, index) => h('li', { key: index },
+              h('span', { className: 'dsh-inbox-command' }, line))),
+          ),
+        );
+
+        const historyCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('historyTitle')),
+            h('span', { className: 'dsh-inbox-hint' },
+              `${t('historyTotal')} ${snapshot?.totalMessages ?? 0} ${t('historyMax')} ${snapshot?.maxMessages ?? 200}`),
+          ),
+          messages.length === 0
+            ? h(
+                'div',
+                { className: 'dsh-inbox-empty' },
+                h('span', { className: 'dsh-inbox-empty-icon', 'aria-hidden': true }, '📭'),
+                h('span', null, t('historyEmpty')),
+              )
+            : h(
+                'div',
+                { className: 'dsh-inbox-messages' },
+                [...messages].reverse().map((message, index) => {
+                  const out = message.direction === 'out';
+                  return h(
+                    'div',
+                    { key: `${message.at}-${message.chatId}-${index}`, className: out ? 'dsh-inbox-message is-out' : 'dsh-inbox-message' },
+                    h(
+                      'div',
+                      { className: 'dsh-inbox-message-head' },
+                      h('span', { className: 'dsh-inbox-arrow' }, out ? '➡' : '⬅'),
+                      h('span', null, out ? t('outgoing') : t('incoming')),
+                      message.blocked === true
+                        ? h('span', { className: 'dsh-inbox-badge is-off' }, t('blockedBadge'))
+                        : null,
+                      h('span', { className: 'dsh-inbox-chat', title: message.chatTitle }, message.chatTitle),
+                      h('span', { className: 'dsh-inbox-time' }, formatTime(message.at)),
+                    ),
+                    h('div', { className: 'dsh-inbox-text' }, message.text),
+                  );
+                }),
+              ),
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-label' }, t('replyLabel')),
+            h('textarea', {
+              className: 'dsh-inbox-reply',
+              rows: 2,
+              placeholder: t('replyPlaceholder'),
+              value: reply,
+              disabled: busy !== '',
+              onChange: event => setReply(event.target.value),
+            }),
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-primary',
+              disabled: busy !== '' || reply.trim() === '',
+              onClick: () => void sendReply(),
+            }, busy === 'send' ? t('sending') : t('send')),
+          ),
+        );
+
+        const howToCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h('span', { className: 'dsh-inbox-card-title' }, t('howTitle')),
+          h('ol', { className: 'dsh-inbox-list' }, steps.map((step, index) => h('li', { key: index }, step))),
+          h('a', {
+            className: 'dsh-inbox-link',
+            href: 'https://t.me/BotFather',
+            target: '_blank',
+            rel: 'noreferrer noopener',
+          }, t('botFather')),
+          h('p', { className: 'dsh-inbox-hint' }, t('scopeNote')),
+        );
+
+        const queueCard = h(
+          'div',
+          { className: 'dsh-inbox-card' },
+          h(
+            'div',
+            { className: 'dsh-inbox-row' },
+            h('span', { className: 'dsh-inbox-card-title' }, t('queueTitle')),
+            h('span', { className: queueConfigured ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
+              queueConfigured ? t('queueConfigured') : t('queueNotConfigured')),
+            queueConfigured
+              ? h('span', { className: queueListener ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
+                  queueListener ? t('queueListenerOn') : t('queueListenerOff'))
+              : null,
+          ),
+          h('p', { className: 'dsh-inbox-hint' },
+            `${t('queueDevice')} ${queueDeviceName === '' ? '—' : `${queueDeviceName} (${queueDeviceId.slice(0, 8)})`}`),
+          queueConfigured
+            ? h('p', { className: 'dsh-inbox-hint' }, `${t('queueRemote')} ${queueInfo.remote ?? ''}`)
+            : h('p', { className: 'dsh-inbox-hint' }, t('queueInline')),
+          queueConfigured
+            ? h(
+                'div',
+                { className: 'dsh-inbox-row' },
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-inbox-button',
+                  disabled: busy !== '',
+                  onClick: () => void setListener(!queueListener),
+                }, busy === 'queue-listener' ? t('queueSwitching') : (queueListener ? t('queueUnlisten') : t('queueListen'))),
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-inbox-button is-primary',
+                  disabled: busy !== '',
+                  onClick: () => void syncQueue(),
+                }, busy === 'queue-sync' ? t('queueSyncing') : t('queueSync')),
+              )
+            : null,
+          queueConfigured
+            ? h('p', { className: 'dsh-inbox-hint' },
+                `${t('queueCounts')} ${t('queueNew')}: ${queueCounts.new ?? 0} · ${t('queueInProgress')}: ${queueCounts.inProgress ?? 0} · ${t('queueDone')}: ${queueCounts.done ?? 0}`)
+            : null,
+          queueConfigured && queueInProgress.length > 0
+            ? h(
+                'div',
+                null,
+                h('p', { className: 'dsh-inbox-hint' }, t('queueWho')),
+                ...queueInProgress.map((item, index) => h('p', { key: `live-${index}`, className: 'dsh-inbox-hint' },
+                  `- ${item.deviceName}: ${item.text}`)),
+              )
+            : null,
+          queueOther !== null
+            ? h('p', { className: 'dsh-inbox-error' }, `${t('queueOther')} ${queueOther.deviceName}`)
+            : null,
+          queueConfigured && queueDevices.length > 0
+            ? h(
+                'div',
+                null,
+                h('p', { className: 'dsh-inbox-hint' }, t('queueDevices')),
+                ...queueDevices.map((entry, index) => h('p', { key: `dev-${index}`, className: 'dsh-inbox-hint' },
+                  `- ${entry.deviceName} (${entry.listener === true ? t('queueListenerOn') : t('queueListenerOff')})`)),
+              )
+            : null,
+          queueConfigured
+            ? h('p', { className: 'dsh-inbox-hint' },
+                `${t('queueLastSync')} ${queueLastSync === '' ? t('queueNever') : queueLastSync}`)
+            : null,
+          queueConfigured
+            ? h('p', { className: (queueInfo.lastError ?? '') !== '' ? 'dsh-inbox-error' : 'dsh-inbox-hint' },
+                `${t('lastError')} ${queueInfo.lastError || t('noError')}`)
+            : null,
+          queueConfigured ? h('p', { className: 'dsh-inbox-hint' }, t('queue409')) : null,
+          h('p', { className: 'dsh-inbox-hint' }, t('queueHint')),
+        );
+
+        const moreAccordion = h(
+          Accordion,
+          {
+            storageKey: MORE_OPEN_KEY,
+            title: t('moreTitle'),
+            badge: queueConfigured ? t('queueConfigured') : t('queueNotConfigured'),
+          },
+          h('p', { className: 'dsh-inbox-hint' }, t('moreHint')),
+          queueCard,
+        );
+
+        const dangerAccordion = h(
+          Accordion,
+          { storageKey: DANGER_OPEN_KEY, tone: 'danger', title: t('dangerTitle') },
+          h('p', { className: 'dsh-inbox-danger-note' }, t('dangerHint')),
+          webhookUrl !== ''
+            ? h(
+                'div',
+                { className: 'dsh-inbox-card' },
+                h('p', { className: 'dsh-inbox-card-title' }, t('webhookWarning')),
+                h('p', { className: 'dsh-inbox-hint' }, webhookUrl),
+                h('button', {
+                  type: 'button',
+                  className: 'dsh-inbox-button is-danger',
+                  disabled: busy !== '',
+                  onClick: () => void removeWebhook(),
+                }, t('webhookDelete')),
+              )
+            : null,
+          h(
+            'div',
+            { className: 'dsh-inbox-danger-actions' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-danger',
+              disabled: busy !== '' || messages.length === 0,
+              title: dangerArmed === 'clear' ? t('clearConfirm') : t('clearTitle'),
+              onClick: () => {
+                if (busy !== '') return;
+                if (dangerArmed === 'clear') {
+                  setDangerArmed('');
+                  void clearHistory();
+                  return;
+                }
+                setDangerArmed('clear');
+              },
+            }, dangerArmed === 'clear' ? t('clearConfirm') : t('clearTitle')),
+            h('button', {
+              type: 'button',
+              className: 'dsh-inbox-button is-danger',
+              disabled: busy !== '',
+              title: dangerArmed === 'remove' ? t('removeConfirm') : t('removeTitle'),
+              onClick: () => {
+                if (busy !== '') return;
+                if (dangerArmed === 'remove') {
+                  setDangerArmed('');
+                  void removeToken();
+                  return;
+                }
+                setDangerArmed('remove');
+              },
+            }, dangerArmed === 'remove' ? t('removeConfirm') : t('removeTitle')),
+          ),
+        );
+
+        const commonNotices = [
+          phase === 'error'
+            ? h('p', { className: 'dsh-inbox-error' }, t('loadFailed'), ' ',
+                h('button', { type: 'button', className: 'dsh-inbox-button', onClick: () => void refresh() }, t('retry')))
+            : null,
+          snapshot?.lastError
+            ? h('p', { className: 'dsh-inbox-error' }, `${t('lastError')} ${snapshot.lastError}`)
+            : snapshot
+              ? h('p', { className: 'dsh-inbox-hint' }, `${t('lastError')} ${t('noError')}`)
+              : null,
+          notice !== null
+            ? h('p', { className: notice.kind === 'ok' ? 'dsh-inbox-note' : 'dsh-inbox-note is-bad' }, notice.text)
+            : null,
+        ];
+
+        // Пока токен не сохранён, на странице только подключение и «как получить»:
+        // белый список, сессия, команды и очередь появятся после подключения.
+        const body = connected
+          ? [
+              tokenCard,
+              receiveCard,
+              allowCard,
+              securityCard,
+              sessionCard,
+              menuCard,
+              profileCard,
+              commandsCard,
+              historyCard,
+              howToCard,
+              moreAccordion,
+              dangerAccordion,
+            ]
+          : [
+              tokenCard,
+              h('p', { className: 'dsh-inbox-hint' }, t('connectFirst')),
+              howToCard,
+            ];
+
         return h(
           'div',
           {
@@ -1069,472 +1710,8 @@ window.__ModuleLoader__.load({
               }, t('refresh')),
             ),
           ),
-          phase === 'error'
-            ? h('p', { className: 'dsh-inbox-error' }, t('loadFailed'), ' ',
-              h('button', { type: 'button', className: 'dsh-inbox-button', onClick: () => void refresh() }, t('retry')))
-            : null,
-          snapshot?.lastError
-            ? h('p', { className: 'dsh-inbox-error' }, `${t('lastError')} ${snapshot.lastError}`)
-            : snapshot
-              ? h('p', { className: 'dsh-inbox-hint' }, `${t('lastError')} ${t('noError')}`)
-              : null,
-          notice !== null
-            ? h('p', { className: notice.kind === 'ok' ? 'dsh-inbox-note' : 'dsh-inbox-note is-bad' }, notice.text)
-            : null,
-          webhookUrl !== ''
-            ? h(
-                'div',
-                { className: 'dsh-inbox-card' },
-                h('p', { className: 'dsh-inbox-error' }, `${t('webhookWarning')} ${webhookUrl}`),
-                h(
-                  'div',
-                  { className: 'dsh-inbox-row' },
-                  h('button', {
-                    type: 'button',
-                    className: 'dsh-inbox-button is-danger',
-                    disabled: busy !== '',
-                    onClick: () => void removeWebhook(),
-                  }, t('webhookDelete')),
-                ),
-              )
-            : null,
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h('label', { className: 'dsh-inbox-card-title', htmlFor: 'dsh-inbox-token' }, t('tokenLabel')),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('input', {
-                id: 'dsh-inbox-token',
-                className: 'dsh-inbox-input',
-                type: 'password',
-                autoComplete: 'off',
-                spellCheck: false,
-                placeholder: configured ? t('tokenPlaceholderSet') : t('tokenPlaceholderUnset'),
-                value: draft,
-                disabled: busy !== '' || snapshot?.writable === false,
-                onChange: event => setDraft(event.target.value),
-                onKeyDown: event => {
-                  if (event.key === 'Enter') void submitToken();
-                },
-              }),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button is-primary',
-                disabled: busy !== '' || draft.trim() === '',
-                onClick: () => void submitToken(),
-              }, busy === 'save' ? t('saving') : t('save')),
-              configured
-                ? h('button', {
-                    type: 'button',
-                    className: 'dsh-inbox-button is-danger',
-                    disabled: busy !== '',
-                    onClick: () => void removeToken(),
-                  }, busy === 'remove' ? t('removing') : t('remove'))
-                : null,
-            ),
-            h('p', { className: 'dsh-inbox-hint' }, t('storedIn')),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: verifyClass, role: 'status' }, verifyText),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button',
-                disabled: busy !== '' || !configured,
-                onClick: () => {
-                  if (busy !== '') return;
-                  setBusy('verify');
-                  void verify().finally(() => {
-                    if (mounted.current) setBusy('');
-                  });
-                },
-              }, verifyPhase === 'checking' ? t('verifying') : t('verify')),
-            ),
-            snapshot?.writable === false
-              ? h('p', { className: 'dsh-inbox-error' }, t('readonly'))
-              : null,
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('button', {
-                type: 'button',
-                role: 'switch',
-                'aria-checked': enabled,
-                'aria-label': t('receiveTitle'),
-                className: enabled ? 'dsh-inbox-switch is-on' : 'dsh-inbox-switch',
-                disabled: busy !== '',
-                onClick: () => void setReceiving(!enabled),
-              }, h('span', { className: 'dsh-inbox-knob' })),
-              h('span', { className: 'dsh-inbox-card-title' }, t('receiveTitle')),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button',
-                disabled: busy !== '',
-                onClick: () => void setReceiving(!enabled),
-              }, enabled ? t('disable') : t('enable')),
-            ),
-            h('p', { className: 'dsh-inbox-hint' }, t('receiveHint')),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('allowTitle')),
-              h('span', { className: 'dsh-inbox-hint' }, `${t('allowCount')} ${allowedIds.length}`),
-            ),
-            h('textarea', {
-              className: 'dsh-inbox-textarea',
-              rows: 2,
-              placeholder: t('allowPlaceholder'),
-              value: allowDraft,
-              disabled: busy !== '',
-              onChange: event => {
-                setAllowDirty(true);
-                setAllowDraft(event.target.value);
-              },
-            }),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button is-primary',
-                disabled: busy !== '',
-                onClick: () => void saveAllowlist(),
-              }, busy === 'allow' ? t('allowSaving') : t('allowSave')),
-            ),
-            h('p', { className: 'dsh-inbox-hint' }, t('usersHint')),
-            h('p', { className: 'dsh-inbox-hint' }, t('allowHint')),
-            allowedIds.length === 0
-              ? h('p', { className: 'dsh-inbox-error' }, t('allowEmpty'))
-              : null,
-            chats.length > 0
-              ? h(
-                  'div',
-                  { className: 'dsh-inbox-row' },
-                  h('span', { className: 'dsh-inbox-label' }, t('chatsTitle')),
-                  h(
-                    'div',
-                    { className: 'dsh-inbox-chips' },
-                    chats.map(chat => h(
-                      'span',
-                      { key: chat.chatId, className: chat.allowed ? 'dsh-inbox-chip' : 'dsh-inbox-chip is-blocked' },
-                      h('span', { className: 'dsh-inbox-chip-name', title: `${chat.chatTitle} (id ${chat.userId ?? chat.chatId}, ${chat.chatType ?? 'private'})` },
-                        chat.chatTitle === '' ? chat.chatId : chat.chatTitle),
-                      chat.allowed
-                        ? h('span', { className: 'dsh-inbox-badge is-on' }, t('allowCurrent'))
-                        : h('button', {
-                            type: 'button',
-                            className: 'dsh-inbox-button',
-                            disabled: busy !== '',
-                            onClick: () => void allowThisChat(chat.chatId, chat.userId),
-                          }, t('allowAdd')),
-                    )),
-                  ),
-                )
-              : null,
-            h('p', { className: 'dsh-inbox-hint' }, t('blockedHint')),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('securityTitle')),
-              h('span', { className: groupsEnabled ? 'dsh-inbox-badge is-off' : 'dsh-inbox-badge is-on' },
-                groupsEnabled ? t('groupsValueOn') : t('groupsValueOff')),
-            ),
-            h('p', { className: 'dsh-inbox-hint' },
-              `${t('ownerLabel')} ${owner.userId ? `${owner.userId}${owner.chatId ? ` (chat ${owner.chatId})` : ''}` : t('ownerNone')}`),
-            h('p', { className: 'dsh-inbox-hint' }, t('ownerHint')),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('input', {
-                className: 'dsh-inbox-input',
-                type: 'text',
-                inputMode: 'numeric',
-                placeholder: t('ownerPlaceholder'),
-                value: ownerDraft,
-                disabled: busy !== '',
-                onChange: event => {
-                  setOwnerDirty(true);
-                  setOwnerDraft(event.target.value);
-                },
-              }),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button',
-                disabled: busy !== '' || ownerDraft.trim() === '',
-                onClick: () => void saveOwner(),
-              }, busy === 'owner' ? t('saving') : t('ownerSave')),
-            ),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('button', {
-                type: 'button',
-                className: groupsEnabled ? 'dsh-inbox-button is-danger' : 'dsh-inbox-button',
-                disabled: busy !== '',
-                onClick: () => void setGroups(!groupsEnabled),
-              }, groupsEnabled ? t('groupsDeny') : t('groupsAllow')),
-            ),
-            h('p', { className: groupsEnabled ? 'dsh-inbox-error' : 'dsh-inbox-hint' }, t('groupsHint')),
-            h('p', { className: 'dsh-inbox-hint' }, `${t('answersPending')} ${answersPending}`),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-card-title' }, t('sessionBlockTitle')),
-            currentSession === null
-              ? h('div', { className: 'dsh-inbox-row' },
-                  h('span', { className: 'dsh-inbox-hint' }, t('sessionNone')),
-                  h('span', { className: 'dsh-inbox-hint' }, t('sessionHint')))
-              : h(
-                  'div',
-                  { className: 'dsh-inbox-session' },
-                  h('span', { className: 'dsh-inbox-session-name' },
-                    currentSession.title === '' ? currentSession.sessionId.slice(0, 8) : currentSession.title),
-                  h('span', { className: 'dsh-inbox-hint' },
-                    currentSession.sessionId.length > 8 ? currentSession.sessionId.slice(0, 8) : currentSession.sessionId),
-                  h('span', { className: currentSession.running ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
-                    currentSession.running ? t('sessionRunning') : t('sessionIdle')),
-                  h('span', { className: 'dsh-inbox-hint' }, currentSession.chatTitle),
-                  h('button', {
-                    type: 'button',
-                    className: 'dsh-inbox-button',
-                    disabled: busy !== '',
-                    onClick: () => void resetSession(currentSession.chatId),
-                  }, t('sessionReset')),
-                ),
-            currentSession === null ? null : h('p', { className: 'dsh-inbox-hint' }, t('sessionHint')),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('menuTitle')),
-              h('span', { className: menuOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
-                menuOk ? t('menuOn') : t('menuOff')),
-            ),
-            menuOk && menuAt !== ''
-              ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuUpdatedAt')} ${menuAt}`)
-              : null,
-            menuCommands !== ''
-              ? h('p', { className: 'dsh-inbox-hint' }, `${t('menuCommands')} ${menuCommands}`)
-              : null,
-            h('p', { className: 'dsh-inbox-hint' }, `${t('menuButtons')} ${t('menuButtonsValue')}`),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button is-primary',
-                disabled: busy !== '',
-                onClick: () => void refreshMenu(),
-              }, busy === 'menu' ? t('menuUpdating') : t('menuUpdate')),
-            ),
-            h('p', { className: 'dsh-inbox-hint' }, t('menuHint')),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('profileTitle')),
-              h('span', { className: profileOk ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
-                profileOk ? (profile.name || t('profileTitle')) : t('profileNotPublished')),
-            ),
-            h('p', { className: 'dsh-inbox-hint' }, `${t('profileName')} ${profile.name || '—'}`),
-            h('p', { className: 'dsh-inbox-hint' }, `${t('profileDescription')} ${profile.description || '—'}`),
-            h('p', { className: 'dsh-inbox-hint' },
-              `${t('profileCommands')} ${Array.isArray(profile.commands) ? profile.commands.join(' · ') : '—'}`),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button is-primary',
-                disabled: busy !== '',
-                onClick: () => void refreshProfile(),
-              }, busy === 'profile' ? t('profileRefreshing') : t('profileRefresh')),
-            ),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('queueTitle')),
-              h('span', { className: queueConfigured ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge is-off' },
-                queueConfigured ? t('queueConfigured') : t('queueNotConfigured')),
-              queueConfigured
-                ? h('span', { className: queueListener ? 'dsh-inbox-badge is-on' : 'dsh-inbox-badge' },
-                    queueListener ? t('queueListenerOn') : t('queueListenerOff'))
-                : null,
-            ),
-            h('p', { className: 'dsh-inbox-hint' },
-              `${t('queueDevice')} ${queueDeviceName === '' ? '—' : `${queueDeviceName} (${queueDeviceId.slice(0, 8)})`}`),
-            queueConfigured
-              ? h('p', { className: 'dsh-inbox-hint' }, `${t('queueRemote')} ${queueInfo.remote ?? ''}`)
-              : h('p', { className: 'dsh-inbox-hint' }, t('queueInline')),
-            queueConfigured
-              ? h(
-                  'div',
-                  { className: 'dsh-inbox-row' },
-                  h('button', {
-                    type: 'button',
-                    className: 'dsh-inbox-button',
-                    disabled: busy !== '',
-                    onClick: () => void setListener(!queueListener),
-                  }, busy === 'queue-listener' ? t('queueSwitching') : (queueListener ? t('queueUnlisten') : t('queueListen'))),
-                  h('button', {
-                    type: 'button',
-                    className: 'dsh-inbox-button is-primary',
-                    disabled: busy !== '',
-                    onClick: () => void syncQueue(),
-                  }, busy === 'queue-sync' ? t('queueSyncing') : t('queueSync')),
-                )
-              : null,
-            queueConfigured
-              ? h('p', { className: 'dsh-inbox-hint' },
-                  `${t('queueCounts')} ${t('queueNew')}: ${queueCounts.new ?? 0} · ${t('queueInProgress')}: ${queueCounts.inProgress ?? 0} · ${t('queueDone')}: ${queueCounts.done ?? 0}`)
-              : null,
-            queueConfigured && queueInProgress.length > 0
-              ? h(
-                  'div',
-                  null,
-                  h('p', { className: 'dsh-inbox-hint' }, t('queueWho')),
-                  ...queueInProgress.map((item, index) => h('p', { key: `live-${index}`, className: 'dsh-inbox-hint' },
-                    `- ${item.deviceName}: ${item.text}`)),
-                )
-              : null,
-            queueOther !== null
-              ? h('p', { className: 'dsh-inbox-error' }, `${t('queueOther')} ${queueOther.deviceName}`)
-              : null,
-            queueConfigured && queueDevices.length > 0
-              ? h(
-                  'div',
-                  null,
-                  h('p', { className: 'dsh-inbox-hint' }, t('queueDevices')),
-                  ...queueDevices.map((entry, index) => h('p', { key: `dev-${index}`, className: 'dsh-inbox-hint' },
-                    `- ${entry.deviceName} (${entry.listener === true ? t('queueListenerOn') : t('queueListenerOff')})`)),
-                )
-              : null,
-            queueConfigured
-              ? h('p', { className: 'dsh-inbox-hint' },
-                  `${t('queueLastSync')} ${queueLastSync === '' ? t('queueNever') : queueLastSync}`)
-              : null,
-            queueConfigured
-              ? h('p', { className: (queueInfo.lastError ?? '') !== '' ? 'dsh-inbox-error' : 'dsh-inbox-hint' },
-                  `${t('lastError')} ${queueInfo.lastError || t('noError')}`)
-              : null,
-            queueConfigured ? h('p', { className: 'dsh-inbox-hint' }, t('queue409')) : null,
-            h('p', { className: 'dsh-inbox-hint' }, t('queueHint')),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-card-title' }, t('commandsTitle')),
-            h(
-              'ul',
-              { className: 'dsh-inbox-list' },
-              commandLines.map((line, index) => h('li', { key: index },
-                h('span', { className: 'dsh-inbox-command' }, line))),
-            ),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-card-title' }, t('historyTitle')),
-              h('span', { className: 'dsh-inbox-hint' },
-                `${t('historyTotal')} ${snapshot?.totalMessages ?? 0} ${t('historyMax')} ${snapshot?.maxMessages ?? 200}`),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button',
-                disabled: busy !== '' || messages.length === 0,
-                onClick: () => void clearHistory(),
-              }, busy === 'clear' ? t('clearing') : t('clear')),
-            ),
-            messages.length === 0
-              ? h(
-                  'div',
-                  { className: 'dsh-inbox-empty' },
-                  h('span', { className: 'dsh-inbox-empty-icon', 'aria-hidden': true }, '📭'),
-                  h('span', null, t('historyEmpty')),
-                )
-              : h(
-                  'div',
-                  { className: 'dsh-inbox-messages' },
-                  [...messages].reverse().map((message, index) => {
-                    const out = message.direction === 'out';
-                    return h(
-                      'div',
-                      { key: `${message.at}-${message.chatId}-${index}`, className: out ? 'dsh-inbox-message is-out' : 'dsh-inbox-message' },
-                      h(
-                        'div',
-                        { className: 'dsh-inbox-message-head' },
-                        h('span', { className: 'dsh-inbox-arrow' }, out ? '➡' : '⬅'),
-                        h('span', null, out ? t('outgoing') : t('incoming')),
-                        message.blocked === true
-                          ? h('span', { className: 'dsh-inbox-badge is-off' }, t('blockedBadge'))
-                          : null,
-                        h('span', { className: 'dsh-inbox-chat', title: message.chatTitle }, message.chatTitle),
-                        h('span', { className: 'dsh-inbox-time' }, formatTime(message.at)),
-                      ),
-                      h('div', { className: 'dsh-inbox-text' }, message.text),
-                    );
-                  }),
-                ),
-            h(
-              'div',
-              { className: 'dsh-inbox-row' },
-              h('span', { className: 'dsh-inbox-label' }, t('replyLabel')),
-              h('textarea', {
-                className: 'dsh-inbox-reply',
-                rows: 2,
-                placeholder: t('replyPlaceholder'),
-                value: reply,
-                disabled: busy !== '',
-                onChange: event => setReply(event.target.value),
-              }),
-              h('button', {
-                type: 'button',
-                className: 'dsh-inbox-button is-primary',
-                disabled: busy !== '' || reply.trim() === '',
-                onClick: () => void sendReply(),
-              }, busy === 'send' ? t('sending') : t('send')),
-            ),
-          ),
-          h(
-            'div',
-            { className: 'dsh-inbox-card' },
-            h('span', { className: 'dsh-inbox-card-title' }, t('howTitle')),
-            h('ol', { className: 'dsh-inbox-list' }, steps.map((step, index) => h('li', { key: index }, step))),
-            h('a', {
-              className: 'dsh-inbox-link',
-              href: 'https://t.me/BotFather',
-              target: '_blank',
-              rel: 'noreferrer noopener',
-            }, t('botFather')),
-            h('p', { className: 'dsh-inbox-hint' }, t('scopeNote')),
-          ),
+          ...commonNotices,
+          ...body,
         );
       }
 

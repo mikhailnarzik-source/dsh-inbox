@@ -22,7 +22,7 @@ const PACKAGE = JSON.parse(await readFile(new URL('../package.json', import.meta
 
 const PLUGIN = "dsh-inbox"
 const PACKAGE_NAME = PACKAGE.name
-const VERSION = "0.5.5"
+const VERSION = "0.5.6"
 const ROOT_SELECTOR = ".dsh-inbox"
 const ARCH = "root"
 const HAS_DETAIL = true
